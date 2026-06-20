@@ -39,7 +39,21 @@ _TEMPLATES.env.cache = None
 
 # Lightweight stores so the taste survives a restart (D11): the markdown taste
 # brief (primary, read by the LLM) and the keyword profile (no-LLM fallback).
-_STATE_DIR = Path(__file__).resolve().parents[3] / "state"
+# Resolve `state/` whether we run from source (repo-root/state, next to src/) or as
+# an installed package launched from the repo checkout (cwd/state) — pick whichever
+# already holds the committed pull snapshot, so a host like Render finds it too.
+def _find_state_dir() -> Path:
+    candidates = [
+        Path(__file__).resolve().parents[3] / "state",   # src layout: repo-root/state
+        Path.cwd() / "state",                             # installed, run from repo root
+    ]
+    for d in candidates:
+        if (d / "last_pull.json").exists():
+            return d
+    return candidates[0] if candidates[0].parent.exists() else candidates[1]
+
+
+_STATE_DIR = _find_state_dir()
 BRIEF_PATH = _STATE_DIR / "taste.md"
 PROFILE_PATH = _STATE_DIR / "taste_profile.json"
 # Cache of the last fetched+enriched pull (D41 / quota): so a restart or code reload

@@ -27,5 +27,14 @@ services:
         value: "3.12.8"
       - key: JUDGE_PROVIDER
         value: auto            # uses Gemini if GEMINI_API_KEY is set, else keyword fallback
+      - key: EBAY_ENV
+        value: production      # not a secret
+      # --- Secrets: set these values in the Render dashboard (never in the repo). ---
       - key: GEMINI_API_KEY
-        sync: false            # set this secret in the Render dashboard, not in the repo
+        sync: false            # AI scoring
+      - key: EBAY_CLIENT_ID
+        sync: false            # live eBay Browse API — App ID
+      - key: EBAY_CLIENT_SECRET
+        sync: false            # live eBay Browse API — Cert ID
+      # The app loads the committed snapshot on boot (no eBay call), so cold starts
+      # spend no quota; clicking "Fetch Listings" does a real live pull on demand.

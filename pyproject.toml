@@ -11,6 +11,11 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# Bundle non-Python data files into the installed package, so `pip install .` (e.g. on a
+# host) ships the HTML templates and the listings fixture — not just the .py code.
+[tool.setuptools.package-data]
+timex_scout = ["web/templates/*.html", "fixtures/*.json"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
