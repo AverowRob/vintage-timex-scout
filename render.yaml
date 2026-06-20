@@ -1,0 +1,28 @@
+# Render Blueprint — one place to deploy Timex Scout as a web service with a public URL.
+#
+# How to use:
+#   1. Push this repo to GitHub (done if you're reading this there).
+#   2. Go to render.com → New → Blueprint → connect this repo. Render reads this file.
+#   3. In the dashboard, set the secret env vars (they are NOT in the repo):
+#        GEMINI_API_KEY   — required for AI scoring (without it the app falls back to keyword scoring)
+#      Optional, for LIVE eBay data instead of the bundled fixture of real captured listings:
+#        EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_ENV=production
+#   4. Deploy. Render gives you a https://timex-scout-XXXX.onrender.com link.
+#
+# Note: the free plan sleeps after ~15 min idle; the first visit after that takes ~30-40s
+# to wake + score. Visit the link once a minute before a demo to keep it warm, or use a
+# paid instance for an always-on link.
+services:
+  - type: web
+    name: timex-scout
+    runtime: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt && pip install ."
+    startCommand: "uvicorn timex_scout.web.app:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: JUDGE_PROVIDER
+        value: auto            # uses Gemini if GEMINI_API_KEY is set, else keyword fallback
+      - key: GEMINI_API_KEY
+        sync: false            # set this secret in the Render dashboard, not in the repo

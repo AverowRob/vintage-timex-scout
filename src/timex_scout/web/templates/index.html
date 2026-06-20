@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timex Scout</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#ffffff; --surface:#ffffff; --surface-2:#f6f6f7;
+      --ink:#0a0a0a; --ink-2:#3a3a3a; --muted:#8c8c8c;
+      --line:#e8e8e8; --line-2:#d8d8d8;
+      --score:#15a34a; --score-bg:#eafaf0; --red:#d23f3f;
+      --radius:14px; --radius-sm:9px;
+      --shadow:0 1px 2px rgba(0,0,0,.04),0 2px 8px rgba(0,0,0,.05);
+      --font:'Inter',ui-sans-serif,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    }
+    *{box-sizing:border-box;}
+    html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+    body{margin:0;font-family:var(--font);font-size:14px;line-height:1.5;
+         color:var(--ink);background:var(--bg);letter-spacing:-0.01em;}
+    a{color:inherit;}
+    .num{font-variant-numeric:tabular-nums;}
+
+    /* ---- Black app bar with primary nav ---- */
+    .appbar{background:var(--ink);color:#fff;padding:13px 28px;display:flex;align-items:center;justify-content:space-between;}
+    .logo{display:inline-flex;align-items:center;gap:10px;font-size:17px;font-weight:800;letter-spacing:-0.02em;}
+    .logo svg{display:block;}
+    .appnav{display:flex;gap:6px;}
+    .appnav a{color:#b9b9b9;text-decoration:none;font-size:13px;font-weight:600;padding:7px 15px;border-radius:99px;}
+    .appnav a:hover{color:#fff;}
+    .appnav a.on{background:#fff;color:var(--ink);}
+
+    /* ---- Funnel area (listings only) ---- */
+    .console{padding:18px 28px 4px;border-bottom:1px solid var(--line);}
+    .funnel-bar{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-bottom:12px;}
+    .updated{font-size:12.5px;color:var(--muted);}
+    .updated b{color:var(--ink-2);font-weight:600;}
+    .btn{font-family:inherit;font-size:13px;font-weight:600;border-radius:var(--radius-sm);
+         padding:9px 16px;cursor:pointer;border:1px solid var(--ink);background:var(--ink);
+         color:#fff;transition:opacity .15s;letter-spacing:-0.01em;}
+    .btn:hover{opacity:.85;}
+    .btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--line-2);}
+    .btn-ghost:hover{background:var(--surface-2);opacity:1;}
+
+    .funnel{display:flex;align-items:stretch;border:1px solid var(--line);border-radius:var(--radius);
+            overflow:hidden;background:var(--surface);box-shadow:var(--shadow);}
+    .stage{flex:1;padding:15px 18px;display:flex;flex-direction:column;gap:3px;position:relative;}
+    .stage + .stage{border-left:1px solid var(--line);}
+    .stage .n{font-size:26px;font-weight:800;letter-spacing:-0.04em;line-height:1.05;}
+    .stage .t{font-size:12.5px;font-weight:600;}
+    .stage .c{font-size:11.5px;color:var(--muted);line-height:1.35;}
+    .stage.lead{background:var(--surface-2);}
+    .stage .minus{color:var(--muted);}
+    .stage:not(:last-child)::after{content:"→";position:absolute;right:-11px;top:50%;
+        transform:translateY(-50%);background:#fff;color:var(--muted);font-size:12px;
+        width:22px;height:22px;display:flex;align-items:center;justify-content:center;
+        border-radius:50%;border:1px solid var(--line);z-index:2;}
+    .srcs{display:flex;gap:12px;margin-top:auto;padding-top:8px;}
+    /* Clickable "view" pill living inside a funnel stage (replaces the old subnav) */
+    .stage-pill{margin-top:auto;align-self:flex-start;display:inline-flex;align-items:center;gap:6px;
+        font-size:11.5px;font-weight:600;text-decoration:none;padding:6px 12px;border-radius:99px;
+        border:1px solid var(--line-2);color:var(--ink);background:#fff;transition:background .12s,color .12s;}
+    .stage-pill:hover{background:var(--surface-2);}
+    .stage-pill.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+    .stage-pill .arrow{font-size:11px;opacity:.7;}
+    .stage.viewing::before{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--ink);}
+    .liked-heart{color:var(--score);}
+    .stage.liked-stage.viewing::before{background:var(--score);}
+    .stage-pill.liked-pill.active{background:var(--score);border-color:var(--score);}
+    /* Pending-taste banner (D39): taste edits queue here; scores re-run on reapply */
+    .pending-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+        background:#fff8e8;border:1px solid #f0dca6;border-radius:var(--radius);padding:13px 16px;margin-bottom:16px;}
+    .pending-bar .pmsg{font-size:13px;color:#6b5618;line-height:1.45;}
+    .pending-bar .pmsg b{color:#4a3c10;}
+    .pending-bar .plist{display:block;font-size:11.5px;color:#8a7530;margin-top:3px;}
+    .pending-bar form{margin:0;flex:none;}
+    .pending-bar .btn{background:#a9801a;border-color:#a9801a;white-space:nowrap;}
+    .pending-bar .btn:hover{opacity:.88;}
+    /* Success toast after a re-score (D39 feedback) */
+    .flash-toast{display:flex;align-items:center;justify-content:space-between;gap:12px;
+        background:var(--score-bg);border:1px solid #bfe6cd;color:#155e34;border-radius:var(--radius);
+        padding:12px 16px;margin-bottom:16px;font-size:13px;font-weight:600;}
+    .flash-toast .banner-x{color:#155e34;}
+    /* Full-screen "thinking" overlay while a synchronous re-score / fetch runs */
+    .loading-overlay{position:fixed;inset:0;background:rgba(255,255,255,.84);z-index:80;
+        display:flex;align-items:center;justify-content:center;}
+    .loading-overlay[hidden]{display:none;}
+    .loading-card{display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center;
+        max-width:340px;padding:30px;}
+    .spinner{width:38px;height:38px;border-radius:50%;border:3px solid var(--line);
+        border-top-color:var(--ink);animation:spin .8s linear infinite;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    .loading-msg{font-size:15px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;}
+    .loading-sub{font-size:12.5px;color:var(--muted);line-height:1.5;}
+    .src{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;}
+    .src .dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+    .src.live .dot{background:var(--score);box-shadow:0 0 0 3px rgba(21,163,74,.16);}      /* green: live */
+    .src.wired .dot{background:#e0a000;box-shadow:0 0 0 3px rgba(224,160,0,.18);}          /* yellow: keys set, pending */
+    .src.off{color:var(--muted);}
+    .src.off .dot{background:var(--red);box-shadow:0 0 0 3px rgba(210,63,63,.14);}         /* red: no key */
+
+    .subnav{display:flex;gap:4px;padding:12px 28px;border-bottom:1px solid var(--line);}
+    .subnav a{text-decoration:none;font-size:13px;font-weight:500;color:var(--ink-2);padding:7px 14px;border-radius:99px;}
+    .subnav a:hover{background:var(--surface-2);}
+    .subnav a.active{background:var(--ink);color:#fff;}
+
+    /* ---- Content ---- */
+    .container{max-width:1320px;margin:0 auto;padding:24px 28px;}
+    .head-row{display:flex;align-items:baseline;justify-content:space-between;margin:0 0 14px;}
+    .head-row h2{margin:0;font-size:17px;font-weight:700;letter-spacing:-0.02em;}
+    .head-row .count{color:var(--muted);font-weight:500;font-size:13px;}
+
+    .filters{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;
+             background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+             padding:14px;margin-bottom:18px;}
+    .filters label{display:flex;flex-direction:column;font-size:10.5px;text-transform:uppercase;
+             letter-spacing:.5px;color:var(--muted);gap:5px;font-weight:600;}
+    .filters input,.filters select{font-family:inherit;padding:8px 10px;border:1px solid var(--line-2);
+             border-radius:var(--radius-sm);font-size:13px;color:var(--ink);background:#fff;}
+    .filters input[type=number]{width:90px;}
+    .filters input:focus,.filters select:focus{outline:none;border-color:var(--ink);}
+    .filters .clear{color:var(--muted);text-decoration:none;font-size:12px;padding:9px 2px;}
+
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:18px;align-content:start;}
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+          overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .18s,transform .18s;}
+    .card:hover{box-shadow:var(--shadow);transform:translateY(-2px);}
+    .card .ph{position:relative;}
+    .card img{width:100%;height:185px;object-fit:cover;background:var(--surface-2);display:block;}
+    .rank{position:absolute;top:10px;left:10px;background:rgba(10,10,10,.82);color:#fff;
+          font-size:11px;font-weight:600;padding:3px 8px;border-radius:99px;backdrop-filter:blur(4px);}
+    .card .body{padding:13px 14px;display:flex;flex-direction:column;gap:9px;flex:1;}
+    .title{font-weight:600;font-size:13.5px;line-height:1.4;letter-spacing:-0.01em;}
+    .meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+    .price{font-weight:700;font-size:15px;letter-spacing:-0.02em;}
+    .score{background:var(--score-bg);color:var(--score);font-weight:700;font-size:12px;
+           padding:3px 9px;border-radius:99px;display:inline-flex;align-items:center;gap:4px;}
+    .score::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--score);}
+    .reason{font-size:12.5px;color:var(--ink-2);line-height:1.4;}
+    .cond{font-size:11.5px;color:var(--muted);}
+    .cond.broken{color:var(--ink);font-weight:600;}
+    .row{display:flex;gap:8px;margin-top:auto;padding-top:4px;}
+    .row .icon-form{display:contents;}
+    .row .heart.on{cursor:pointer;} .row .heart.down{cursor:pointer;}
+    .row .heart.on:hover{opacity:.85;} .row .heart.down:hover{background:#fbecec;}
+    .row a,.row button,.row .heart{font-family:inherit;font-size:12.5px;font-weight:600;padding:8px 11px;
+          border-radius:var(--radius-sm);text-decoration:none;cursor:pointer;}
+    .row .buy{background:var(--ink);color:#fff;border:1px solid var(--ink);flex:1;text-align:center;}
+    .row .buy:hover{opacity:.85;}
+    .row .like{background:#fff;color:var(--ink);border:1px solid var(--line-2);}
+    .row .like:hover{background:var(--score-bg);color:var(--score);border-color:#c4e9d2;}
+    .row .heart{display:inline-flex;align-items:center;}
+    .row .heart.on{border:1px solid var(--ink);background:var(--ink);color:#fff;}
+    .row .like.down{color:var(--muted);}
+    .row .like.down:hover{background:#fbecec;color:var(--red);border-color:#f0d4d4;}
+    .row .heart.down{border:1px solid var(--red);background:#fff;color:var(--red);}
+    .reason-input{width:100%;font-family:inherit;padding:10px 11px;border:1px solid var(--line-2);
+        border-radius:var(--radius-sm);font-size:13px;margin-bottom:16px;}
+    .reason-input:focus{outline:none;border-color:var(--ink);}
+
+    .pager{display:flex;gap:6px;align-items:center;justify-content:center;margin:24px 0 4px;flex-wrap:wrap;}
+    .pager a,.pager span{font-size:12.5px;padding:7px 12px;border-radius:var(--radius-sm);
+          text-decoration:none;color:var(--ink);border:1px solid var(--line);background:#fff;}
+    .pager a:hover{background:var(--surface-2);}
+    .pager .cur{background:var(--ink);color:#fff;border-color:var(--ink);}
+    .pager .disabled{color:var(--line-2);border-color:var(--line);}
+    .empty{color:var(--muted);padding:40px 0;text-align:center;}
+
+    /* ---- Manage Scout ---- */
+    .scout-head{margin-bottom:18px;max-width:720px;}
+    .scout-head h2{margin:0 0 6px;font-size:19px;font-weight:800;letter-spacing:-0.03em;}
+    .scout-head p{margin:0;font-size:13px;color:var(--ink-2);line-height:1.55;}
+    .taste-grid{display:grid;grid-template-columns:1fr 380px;gap:24px;align-items:start;}
+    .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:18px;}
+    .panel h3{margin:0 0 4px;font-size:14px;font-weight:700;letter-spacing:-0.01em;}
+    .panel .note{font-size:12px;color:var(--muted);margin:0 0 12px;line-height:1.45;}
+    .brief-edit{width:100%;min-height:460px;font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+        font-size:12px;line-height:1.6;padding:14px;border:1px solid var(--line-2);
+        border-radius:var(--radius-sm);resize:vertical;color:var(--ink-2);background:#fcfcfc;margin-bottom:10px;}
+    .brief-edit:focus{outline:none;border-color:var(--ink);background:#fff;}
+    .full{width:100%;}
+    .reset{background:none;border:0;color:var(--muted);cursor:pointer;padding:0;font-size:11.5px;
+        font-family:inherit;text-decoration:underline;}
+    .ref-row{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line);}
+    .ref-row:last-child{border-bottom:0;}
+    .ref-row img{width:46px;height:46px;border-radius:8px;object-fit:cover;background:var(--surface-2);flex:none;}
+    .ref-info{flex:1;min-width:0;}
+    .ref-title{font-size:12px;font-weight:600;line-height:1.3;
+        overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+    .ref-title a{text-decoration:none;}
+    .tiny{font-size:11px;color:var(--muted);}
+    .seed-badge{font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+        background:var(--ink);color:#fff;padding:3px 8px;border-radius:99px;flex:none;}
+    /* ---- Liked | Disliked two-column layout (tied to the card buttons' colors) ---- */
+    .ld-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
+    @media(max-width:820px){.ld-grid{grid-template-columns:1fr;}}
+    .panel.liked-panel{border-top:3px solid var(--score);}
+    .panel.disliked-panel{border-top:3px solid var(--red);}
+    .ld-head{display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+    .ld-head h3{margin:0;}
+    .ld-ic{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;
+        justify-content:center;font-size:12px;flex:none;}
+    .ld-ic.like{background:var(--score-bg);color:var(--score);border:1px solid #c4e9d2;}
+    .ld-ic.dislike{background:#fbecec;color:var(--red);border:1px solid #f0d4d4;}
+    .ld-count{font-size:11px;color:var(--muted);font-weight:600;margin-left:auto;}
+    .ld-reason{font-size:11px;color:var(--ink-2);font-style:italic;margin-top:2px;
+        overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+    .ref-badge{font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+        padding:3px 8px;border-radius:99px;flex:none;}
+    .ref-badge.ref{background:var(--score-bg);color:var(--score);border:1px solid #c4e9d2;}
+    .ref-badge.saved{background:var(--surface-2);color:var(--muted);border:1px solid var(--line-2);}
+    .ld-empty{font-size:12px;color:var(--muted);padding:14px 0 4px;}
+
+    /* ---- Like confirmation modal ---- */
+    .modal-overlay{position:fixed;inset:0;background:rgba(10,10,10,.45);display:flex;
+        align-items:center;justify-content:center;z-index:60;padding:20px;}
+    .modal-overlay[hidden]{display:none;}
+    .modal{background:#fff;border-radius:18px;padding:26px;max-width:440px;box-shadow:0 16px 48px rgba(0,0,0,.25);}
+    .modal h3{margin:0 0 8px;font-size:17px;font-weight:800;letter-spacing:-0.02em;}
+    .modal p{margin:0 0 20px;font-size:13.5px;color:var(--ink-2);line-height:1.55;}
+    .modal-actions{display:flex;gap:10px;justify-content:flex-end;}
+    .modal-sub{font-size:12px;color:var(--muted);margin:-8px 0 12px;}
+    .modal-choice{display:flex;flex-direction:column;gap:10px;}
+    .choice{text-align:left;display:flex;flex-direction:column;gap:3px;padding:13px 15px;
+        cursor:pointer;border-radius:var(--radius-sm);font-family:inherit;width:100%;}
+    .choice .ct{font-weight:700;font-size:13.5px;}
+    .choice .cs{font-weight:400;font-size:11.5px;line-height:1.4;}
+    .btn-ghost.choice .cs{color:var(--muted);}
+    .btn.choice .cs{color:#dcdcdc;}
+    .tier{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;
+        color:#fff;background:var(--ink);padding:2px 7px;border-radius:99px;}
+    .learned{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+    .banner-x{background:none;border:0;color:#0f7a38;cursor:pointer;font-size:13px;
+        font-family:inherit;opacity:.65;padding:0 2px;}
+    .banner-x:hover{opacity:1;}
+    .use-ref{font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;
+        border:1px solid var(--line-2);background:#fff;border-radius:7px;padding:5px 9px;color:var(--ink);}
+    .use-ref:hover{background:var(--surface-2);}
+    /* ---- Clickable card photo (opens the detail modal) ---- */
+    .card .ph{cursor:pointer;}
+    .card .title{cursor:pointer;}
+    .card .title:hover{text-decoration:underline;text-underline-offset:2px;}
+    .ph .zoom{position:absolute;left:8px;bottom:8px;z-index:2;width:26px;height:26px;border-radius:7px;
+        background:rgba(10,10,10,.55);color:#fff;display:flex;align-items:center;justify-content:center;
+        font-size:13px;opacity:0;transition:opacity .12s;pointer-events:none;}
+    .card:hover .ph .zoom{opacity:1;}
+    /* ---- Listing detail modal (image + everything we hold + prev/next) ---- */
+    .detail-overlay .modal.detail{max-width:860px;width:100%;padding:0;overflow:hidden;
+        display:grid;grid-template-columns:1.05fr 1fr;position:relative;}
+    .det-img{background:#0a0a0a;display:flex;flex-direction:column;min-height:340px;}
+    .det-img .noimg{color:#777;font-size:13px;margin:auto;}
+    .gmain{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;position:relative;}
+    .gmain img{width:100%;height:100%;max-height:512px;object-fit:contain;display:block;}
+    .gcount{position:absolute;top:10px;left:10px;background:rgba(0,0,0,.6);color:#fff;font-size:11px;
+        font-weight:600;padding:3px 9px;border-radius:99px;}
+    .gthumbs{display:flex;gap:6px;padding:8px;overflow-x:auto;background:#141414;flex:none;}
+    .gthumb{flex:none;width:46px;height:46px;border:2px solid transparent;border-radius:6px;overflow:hidden;
+        cursor:pointer;padding:0;background:#222;opacity:.55;transition:opacity .12s;}
+    .gthumb:hover{opacity:.85;}
+    .gthumb.active{border-color:#fff;opacity:1;}
+    .gthumb img{width:100%;height:100%;object-fit:cover;display:block;}
+    .det-info{padding:26px 26px 22px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;max-height:560px;}
+    .det-info .d-title{font-size:16px;font-weight:700;line-height:1.35;letter-spacing:-0.01em;}
+    .det-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+    .det-meta .price{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;}
+    .det-reason{font-size:13px;color:var(--ink-2);line-height:1.5;background:var(--surface-2);
+        border-radius:var(--radius-sm);padding:11px 13px;}
+    .det-reason .rl{display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;
+        letter-spacing:.5px;color:var(--muted);margin-bottom:3px;}
+    .det-breakdown .rl{display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;
+        letter-spacing:.5px;color:var(--muted);margin-bottom:8px;}
+    .det-breakdown .factors{display:flex;flex-direction:column;gap:1px;}
+    .fac{display:grid;grid-template-columns:20px 1fr auto;gap:9px;align-items:baseline;
+        font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--line);}
+    .fac:last-child{border-bottom:0;}
+    .fac .fsym{font-weight:800;text-align:center;font-variant-numeric:tabular-nums;}
+    .fac .fsig{color:var(--ink);}
+    .fac .fw{font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);}
+    .fac.pos .fsym{color:var(--score);} .fac.neg .fsym{color:var(--red);} .fac.neu .fsym{color:var(--muted);}
+    .det-breakdown .narrative{font-size:12.5px;color:var(--ink-2);line-height:1.55;margin-top:11px;
+        background:var(--surface-2);border-radius:var(--radius-sm);padding:11px 13px;}
+    .det-explain{align-self:flex-start;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;
+        color:var(--ink);background:#fff;border:1px solid var(--line-2);border-radius:var(--radius-sm);padding:8px 12px;}
+    .det-explain:hover{background:var(--surface-2);} .det-explain:disabled{color:var(--muted);cursor:default;}
+    .det-specs .sl,.det-desc .dl{display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;
+        letter-spacing:.5px;color:var(--muted);margin-bottom:6px;}
+    .spec-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:12px;}
+    .spec-grid .sk{color:var(--muted);white-space:nowrap;}
+    .spec-grid .sv{color:var(--ink);font-weight:500;}
+    .det-desc .dtext{font-size:12px;color:var(--ink-2);line-height:1.55;max-height:160px;overflow-y:auto;
+        background:var(--surface-2);border-radius:var(--radius-sm);padding:10px 12px;white-space:pre-wrap;}
+    .det-facts{font-size:12.5px;color:var(--ink-2);line-height:1.7;}
+    .det-facts b{color:var(--ink);font-weight:600;}
+    .det-note{font-size:11.5px;color:var(--muted);line-height:1.45;border-top:1px solid var(--line);padding-top:11px;}
+    .det-actions{display:flex;gap:9px;margin-top:auto;padding-top:6px;}
+    .det-actions a,.det-actions button{font-family:inherit;font-size:13px;font-weight:600;
+        padding:10px 13px;border-radius:var(--radius-sm);cursor:pointer;text-decoration:none;}
+    .det-actions .buy{background:var(--ink);color:#fff;border:1px solid var(--ink);flex:1;text-align:center;}
+    .det-actions .buy:hover{opacity:.85;}
+    .det-actions .like{background:#fff;color:var(--ink);border:1px solid var(--line-2);}
+    .det-actions .like:hover{background:var(--score-bg);color:var(--score);border-color:#c4e9d2;}
+    .det-actions .like.down{color:var(--muted);}
+    .det-actions .like.down:hover{background:#fbecec;color:var(--red);border-color:#f0d4d4;}
+    .det-actions .tag{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;
+        padding:10px 13px;border-radius:var(--radius-sm);}
+    .det-actions .tag.liked{background:var(--ink);color:#fff;}
+    .det-actions .tag.passed{border:1px solid var(--red);color:var(--red);}
+    .det-x{position:absolute;top:12px;right:12px;z-index:3;width:30px;height:30px;border:0;border-radius:50%;
+        background:rgba(255,255,255,.92);color:var(--ink);font-size:14px;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.2);}
+    .det-x:hover{background:#fff;}
+    .det-count{font-variant-numeric:tabular-nums;font-size:11px;color:var(--muted);letter-spacing:.3px;}
+    .det-nav{position:fixed;top:50%;transform:translateY(-50%);width:46px;height:46px;border:0;border-radius:50%;
+        background:rgba(255,255,255,.92);color:var(--ink);font-size:24px;line-height:1;cursor:pointer;z-index:62;
+        display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.25);}
+    .det-nav:hover{background:#fff;}
+    .det-nav.prev{left:22px;} .det-nav.next{right:22px;}
+    @media(max-width:760px){
+        .detail-overlay .modal.detail{grid-template-columns:1fr;max-width:460px;}
+        .det-img{min-height:240px;} .det-img img{max-height:300px;}
+        .det-info{max-height:none;}
+        .det-nav{top:auto;bottom:18px;transform:none;width:40px;height:40px;font-size:20px;}
+        .det-nav.prev{left:calc(50% - 52px);} .det-nav.next{right:calc(50% - 52px);}
+    }
+    .rubric .bands{display:flex;flex-direction:column;margin-top:4px;max-width:780px;}
+    .band{display:grid;grid-template-columns:62px 86px 1fr;gap:12px;align-items:baseline;
+        font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);}
+    .band:last-child{border-bottom:0;}
+    .band .bn{font-weight:700;font-variant-numeric:tabular-nums;}
+    .band .bt{font-weight:600;}
+    .band .bd{color:var(--muted);line-height:1.4;}
+
+    @media(max-width:820px){.funnel{flex-direction:column;}
+        .stage+.stage{border-left:0;border-top:1px solid var(--line);}
+        .stage:not(:last-child)::after{display:none;}
+        .taste-grid{grid-template-columns:1fr;}.appnav a{padding:7px 11px;}}
+  </style>
+</head>
+<body>
+  <div class="appbar">
+    <span class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"></circle><path d="M12 7.5V12l3 2"></path>
+      </svg>
+      Timex Scout
+    </span>
+    <nav class="appnav">
+      <a href="/" class="{{ 'on' if mode != 'taste' }}">Listings</a>
+      <a href="/taste" class="{{ 'on' if mode == 'taste' }}">Manage Scout</a>
+    </nav>
+  </div>
+
+  {% if mode != 'taste' %}
+  <div class="console">
+    <div class="funnel-bar">
+      <span class="updated">{% if last_pull_at %}Last updated <b>{{ last_pull_at }}</b> · on demand{% endif %}</span>
+      <form action="/refresh" method="post" class="js-loading" data-loading="Fetching &amp; scoring listings…"><button class="btn" type="submit">↻ Fetch Listings</button></form>
+    </div>
+    <div class="funnel">
+      <div class="stage lead">
+        <div class="n num">{{ result.counts.fetched }}</div>
+        <div class="t">Fetched</div>
+        <div class="c">“vintage timex” · item price ≤ ${{ price_cap }}</div>
+        <div class="srcs">
+          {% for s in sources %}
+          <span class="src {{ s.state }}" title="{{ s.detail }}"><span class="dot"></span>{{ s.name }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="stage {{ 'viewing' if mode=='all' }}">
+        <div class="n num">{{ result.counts.gated }}</div>
+        <div class="t">Passed the gate</div>
+        <div class="c">not broken · confirmed a Timex <span class="minus">· {{ result.counts.dropped }} removed</span></div>
+        <a href="/all" class="stage-pill {{ 'active' if mode=='all' }}">View all <span class="arrow">→</span></a>
+      </div>
+      <div class="stage {{ 'viewing' if mode=='contenders' }}">
+        <div class="n num">{{ result.counts.contenders }}</div>
+        <div class="t">Top contenders</div>
+        <div class="c">scored ≥ {{ threshold }} by {{ result.judge_kind }}</div>
+        <a href="/" class="stage-pill {{ 'active' if mode=='contenders' }}">View top contenders <span class="arrow">→</span></a>
+      </div>
+      <div class="stage liked-stage {{ 'viewing' if mode=='liked' }}">
+        <div class="n num">{{ liked_count }}</div>
+        <div class="t"><span class="liked-heart">♥</span> Liked</div>
+        <div class="c">watches you’ve saved or referenced</div>
+        <a href="/liked" class="stage-pill liked-pill {{ 'active' if mode=='liked' }}">View liked <span class="arrow">→</span></a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="container">
+  {% if flash %}
+    <div class="flash-toast" id="flashToast">
+      <span>✓ {{ flash }}</span>
+      <button type="button" class="banner-x" onclick="this.parentElement.remove()" aria-label="Dismiss">✕</button>
+    </div>
+  {% endif %}
+  {% if brief_dirty %}
+    <div class="pending-bar">
+      <div class="pmsg">
+        <b>Taste brief updated — {{ pending|length }} change{{ 's' if pending|length != 1 }} queued.</b>
+        Scores below don’t reflect {{ 'them' if pending|length != 1 else 'it' }} yet. Reapply to re-score all {{ result.counts.gated }} in one pass.
+        <span class="plist">{{ pending[-3:]|reverse|join(' · ') }}{% if pending|length > 3 %} · +{{ pending|length - 3 }} earlier{% endif %}</span>
+      </div>
+      <form action="/taste/apply" method="post" class="js-loading"
+            data-loading="Re-scoring {{ result.counts.gated }} listings…">
+        <input type="hidden" name="mode" value="{{ 'taste' if mode=='taste' else mode }}">
+        <button class="btn" type="submit">↻ Reapply taste → re-score {{ result.counts.gated }}</button>
+      </form>
+    </div>
+  {% endif %}
+  {% if mode == 'taste' %}
+    <div class="scout-head">
+      <h2>Manage your Scout</h2>
+      <p>Your Scout reads the <b>taste brief</b> below and scores every gated Timex listing 0–100,
+        learning from the <b>reference watches</b>. Likes, passes and edits are <b>queued</b> — they update
+        the brief instantly but only re-score your listings when you <b>Reapply taste</b>, so many
+        refinements cost one re-score, not one each.</p>
+    </div>
+
+    <!-- Taste brief: full width, the primary editable surface -->
+    <div class="panel">
+      <h3>Taste brief</h3>
+      <p class="note">{{ taste_source }} — the markdown your Scout reads to score every listing.</p>
+      <form action="/taste/save" method="post">
+        <textarea class="brief-edit" name="brief" spellcheck="false">{{ brief }}</textarea>
+        <button class="btn full" type="submit">Save changes</button>
+        <p class="tiny" style="margin-top:7px;">Saves the brief and queues a re-score. Listings update when you <b>Reapply taste</b> — so edits are free until you apply.</p>
+      </form>
+      <form action="/taste/reset" method="post" style="margin-top:8px;" class="js-loading"
+            data-loading="Resetting to seed &amp; re-scoring…">
+        <button class="reset" type="submit">Reset to seed</button>
+      </form>
+    </div>
+
+    <!-- Two parallel columns: Liked (green ♥) | Passed on (red ✕) — tied to the card buttons -->
+    <div class="ld-grid">
+      <div class="panel liked-panel">
+        <div class="ld-head">
+          <span class="ld-ic like">♥</span>
+          <h3>Liked &amp; references</h3>
+          <span class="ld-count">{{ examples|length + references|length + saved_only|length }}</span>
+        </div>
+        <p class="note">The 3 seed examples plus watches you’ve liked. References (♥) teach your
+          Scout what “interesting” means; saved ones are bookmarks until you promote them.</p>
+        {% for e in examples %}
+        <div class="ref-row">
+          <img src="{{ e.image }}" alt="" referrerpolicy="no-referrer">
+          <div class="ref-info">
+            <div class="ref-title"><a href="{{ e.url }}" target="_blank" rel="noopener">{{ e.title }}</a></div>
+            <div class="tiny">{{ e.note }}</div>
+          </div>
+          <span class="seed-badge">Seed</span>
+        </div>
+        {% endfor %}
+        {% for l in references %}
+        <div class="ref-row">
+          {% if l.images %}<img src="{{ l.images[0] }}" alt="" referrerpolicy="no-referrer">{% endif %}
+          <div class="ref-info">
+            <div class="ref-title">{{ l.title }}</div>
+            <div class="tiny">${{ '%.2f'|format(l.price) }}{% if l.interest_score is not none %} · score {{ l.interest_score }}{% endif %}</div>
+            {% if liked_reasons.get(l.id) %}<div class="ld-reason">“{{ liked_reasons[l.id] }}”</div>{% endif %}
+          </div>
+          <span class="ref-badge ref">♥ Ref</span>
+          <form action="/unlike/{{ l.id }}" method="post"><button class="reset" type="submit">remove</button></form>
+        </div>
+        {% endfor %}
+        {% for l in saved_only %}
+        <div class="ref-row">
+          {% if l.images %}<img src="{{ l.images[0] }}" alt="" referrerpolicy="no-referrer">{% endif %}
+          <div class="ref-info">
+            <div class="ref-title">{{ l.title }}</div>
+            <div class="tiny">${{ '%.2f'|format(l.price) }}{% if l.interest_score is not none %} · score {{ l.interest_score }}{% endif %}</div>
+          </div>
+          <form action="/reference/{{ l.id }}" method="post"><button class="use-ref" type="submit">Use as reference</button></form>
+        </div>
+        {% endfor %}
+        {% if not references and not saved_only %}<p class="ld-empty">Like a watch and choose “Save &amp; refine” to add a reference here.</p>{% endif %}
+      </div>
+
+      <div class="panel disliked-panel">
+        <div class="ld-head">
+          <span class="ld-ic dislike">✕</span>
+          <h3>Passed on</h3>
+          <span class="ld-count">{{ disliked|length }}</span>
+        </div>
+        <p class="note">Watches you’ve downvoted. Your Scout rates similar pieces lower, but never hides them.</p>
+        {% for l in disliked %}
+        <div class="ref-row">
+          {% if l.images %}<img src="{{ l.images[0] }}" alt="" referrerpolicy="no-referrer">{% endif %}
+          <div class="ref-info">
+            <div class="ref-title">{{ l.title }}</div>
+            <div class="ld-reason">{% if disliked_reasons.get(l.id) %}“{{ disliked_reasons[l.id] }}”{% else %}no reason given{% endif %}</div>
+          </div>
+          <form action="/undislike/{{ l.id }}" method="post"><button class="reset" type="submit">remove</button></form>
+        </div>
+        {% endfor %}
+        {% if not disliked %}<p class="ld-empty">Pass on a watch (the ✕ on a card) and it’ll appear here.</p>{% endif %}
+      </div>
+    </div>
+
+    <!-- Rule brick: the "how scoring works" reference, full width at the bottom -->
+    <div class="panel rubric">
+      <h3>How a score is decided <span class="tiny">— the rule brick</span></h3>
+      <p class="note" style="max-width:780px;">Your Scout scores each listing 0–100 for taste fit — a holistic AI judgment, not a fixed formula. Price, brand and condition are handled by the gate, so the <b>score is purely about taste fit</b>. The bands:</p>
+      <div class="bands">
+        <div class="band"><span class="bn">90–100</span><span class="bt">Standout</span><span class="bd"><b>strong alignment with your brief</b> — a clear collab / character / advertising dial, deadstock / NOS, or a rare, distinctive model. These are your <b>Top contenders</b>.</span></div>
+        <div class="band"><span class="bn">70–89</span><span class="bt">On-taste</span><span class="bd">a named vintage model line in good shape.</span></div>
+        <div class="band"><span class="bn">40–69</span><span class="bt">Ordinary</span><span class="bd">a vintage Timex, nothing special.</span></div>
+        <div class="band"><span class="bn">0–39</span><span class="bt">Off-taste</span><span class="bd">generic / modern, digital, straps, watch lots — <b>and anything you’ve passed on</b>. A passed-on trait overrides taste: pass on “Mickey Mouse” and every Mickey watch lands here, even though character dials are normally on-taste.</span></div>
+      </div>
+      <p class="note" style="max-width:780px;margin-top:12px;">Signals it weighs (from your brief): <b>model lines</b> (Marlin, Viscount, Camper…), <b>character / advertising / novelty dials</b>, <b>collabs</b>, <b>deadstock / NOS / boxed</b>, <b>distinctive dials</b> (bullseye, linen), and condition — plus your liked &amp; passed-on references. Each listing’s reason names the drivers — e.g. <i>“deadstock NOS, boxed, advertising dial.”</i></p>
+    </div>
+  {% else %}
+    <div class="head-row">
+      <h2>{{ 'Top contenders' if mode=='contenders' else ('Liked' if mode=='liked' else 'All gated listings') }} <span class="count">· {{ total }}</span></h2>
+    </div>
+
+    <form class="filters" method="get" action="/{{ '' if mode=='contenders' else mode }}">
+      <label>Min price<input type="number" name="price_min" step="1" min="0"
+        value="{{ filters.price_min|round(0,'floor')|int if filters.price_min is not none }}"></label>
+      <label>Max price<input type="number" name="price_max" step="1" min="0" max="{{ price_cap }}"
+        value="{{ filters.price_max|round(0,'ceil')|int if filters.price_max is not none }}"></label>
+      <label>Min score<input type="number" name="min_score" step="5" min="0" max="100"
+        value="{{ filters.min_score or '' }}"></label>
+      <label>Sort
+        <select name="sort" onchange="this.form.submit()">
+          <option value="interest" {{ 'selected' if filters.sort=='interest' }}>Score: high → low</option>
+          <option value="price_asc" {{ 'selected' if filters.sort=='price_asc' }}>Price: low → high</option>
+          <option value="price_desc" {{ 'selected' if filters.sort=='price_desc' }}>Price: high → low</option>
+        </select>
+      </label>
+      <button class="btn" type="submit">Apply</button>
+      <a class="clear" href="/{{ '' if mode=='contenders' else mode }}">Clear</a>
+    </form>
+
+    {% if not listings %}
+      {% if mode=='liked' %}<p class="empty">You haven’t liked any watches yet — tap the ♥ on a card to add one.</p>
+      {% else %}<p class="empty">No listings match these filters.</p>{% endif %}
+    {% endif %}
+
+    <div class="grid">
+      {% for l in listings %}
+      <div class="card">
+        <div class="ph" onclick="openDetail({{ loop.index0 }})" title="View details">
+          {% if l.images %}<img src="{{ l.images[0] }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+          {% if mode=='contenders' %}<span class="rank num">#{{ loop.index }}</span>{% endif %}
+          <span class="zoom" aria-hidden="true">⤢</span>
+        </div>
+        <div class="body">
+          <div class="title" onclick="openDetail({{ loop.index0 }})">{{ l.title }}</div>
+          <div class="meta-row">
+            <span class="price num">${{ '%.2f'|format(l.price) }}</span>
+            {% if l.interest_score is not none %}<span class="score num">{{ l.interest_score }}</span>{% endif %}
+          </div>
+          {% if l.reason %}<div class="reason">{{ l.reason }}</div>{% endif %}
+          <div class="cond {{ 'broken' if l.working_status=='broken' }}">{{ l.raw_condition.label or 'condition unspecified' }}{% if l.listed_at %}<span class="age"> · {{ l.listed_at | age }}</span>{% endif %}</div>
+          <div class="row">
+            <a class="buy" href="{{ l.url }}" target="_blank" rel="noopener">View on eBay ↗</a>
+            {% if l.id in liked_ids %}
+            <form method="post" action="/unlike/{{ l.id }}" class="icon-form">
+              <input type="hidden" name="mode" value="{{ mode }}">
+              <button type="submit" class="heart on" title="Liked — click to remove">♥</button>
+            </form>
+            {% else %}
+            <button type="button" class="like" data-id="{{ l.id }}" data-title="{{ l.title }}"
+                    data-mode="{{ mode }}" onclick="openLike(this)" title="Like — teach your Scout">♡</button>
+            {% endif %}
+            {% if l.id in disliked_ids %}
+            <form method="post" action="/undislike/{{ l.id }}" class="icon-form">
+              <input type="hidden" name="mode" value="{{ mode }}">
+              <button type="submit" class="heart down" title="Passed on — click to undo">✕</button>
+            </form>
+            {% else %}
+            <button type="button" class="like down" data-id="{{ l.id }}" data-title="{{ l.title }}"
+                    data-mode="{{ mode }}" onclick="openDislike(this)" title="Not interested">✕</button>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% if pages > 1 %}
+    <div class="pager">
+      {% set qb = ('&' ~ query_base) if query_base else '' %}
+      {% if page > 1 %}<a href="?page={{ page-1 }}{{ qb }}">‹</a>{% else %}<span class="disabled">‹</span>{% endif %}
+      {% for p in range(1, pages+1) %}
+        {% if p==page %}<span class="cur num">{{ p }}</span>
+        {% elif p<=2 or p>pages-2 or (p>=page-1 and p<=page+1) %}<a class="num" href="?page={{ p }}{{ qb }}">{{ p }}</a>
+        {% elif p==3 or p==pages-2 %}<span class="disabled">…</span>{% endif %}
+      {% endfor %}
+      {% if page < pages %}<a href="?page={{ page+1 }}{{ qb }}">›</a>{% else %}<span class="disabled">›</span>{% endif %}
+    </div>
+    {% endif %}
+  {% endif %}
+  </div>
+
+  <!-- Like: capture an optional reason (what you like) so the Scout learns the right trait -->
+  <div id="likeModal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h3>Like this watch</h3>
+      <p>Tell your Scout <i>what you like</i> about <b id="likeTitle"></b> (optional) — the trait,
+        not just this watch — and it’ll rate similar ones higher.</p>
+      <form id="likeForm" method="post">
+        <input type="text" name="reason" class="reason-input" id="likeReason" autocomplete="off"
+               placeholder="what do you like? (optional) — e.g. the bullseye dial, it’s NOS, the model line">
+        <input type="hidden" name="mode" id="likeMode" value="contenders">
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" onclick="closeLike()">Cancel</button>
+          <button class="btn-ghost" type="submit" name="refine" value="0"
+                  title="Bookmark only — no taste change">Just save it</button>
+          <button class="btn" type="submit" name="refine" value="1">Save &amp; refine my Scout</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <!-- Downvote: capture an optional reason so the Scout learns the right thing -->
+  <div id="dislikeModal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h3>Not interested?</h3>
+      <p>Tell your Scout <i>why</i> you’re passing on <b id="dislikeTitle"></b> (optional), so it
+        learns the right trait. It’ll rate similar watches lower, never hide them.</p>
+      <form id="dislikeForm" method="post">
+        <input type="text" name="reason" class="reason-input" autocomplete="off"
+               placeholder="why? (optional) — e.g. too generic, wrong era, not my style">
+        <input type="hidden" name="mode" id="dislikeMode" value="contenders">
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" onclick="closeDislike()">Cancel</button>
+          <button class="btn" type="submit">Pass on this watch</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Listing detail: bigger image + everything we hold; prev/next browse the page -->
+  <div id="detailModal" class="modal-overlay detail-overlay" hidden>
+    <button type="button" class="det-nav prev" onclick="detailStep(-1)" aria-label="Previous">‹</button>
+    <div class="modal detail" id="detailCard">
+      <button type="button" class="det-x" onclick="closeDetail()" aria-label="Close">✕</button>
+      <div class="det-img" id="detImgWrap"></div>
+      <div class="det-info">
+        <div class="d-title" id="detTitle"></div>
+        <div class="det-meta">
+          <span class="price num" id="detPrice"></span>
+          <span id="detScoreWrap"></span>
+        </div>
+        <div class="det-reason" id="detReasonWrap" hidden><span class="rl">Why your Scout scored it</span><span id="detReason"></span></div>
+        <div class="det-breakdown" id="detBreakdown" hidden>
+          <span class="rl">How your Scout scored it</span>
+          <div class="factors" id="detFactors"></div>
+          <div class="narrative" id="detNarrative"></div>
+        </div>
+        <button type="button" class="det-explain" id="detExplainBtn" hidden onclick="explainCurrent()">Explain in detail</button>
+        <div class="det-facts" id="detFacts"></div>
+        <div class="det-specs" id="detSpecs" hidden></div>
+        <div class="det-desc" id="detDesc" hidden></div>
+        <div class="det-note">Specifics &amp; description are pulled from the listing. See eBay for full terms.</div>
+        <div class="det-actions" id="detActions"></div>
+        <div class="det-count" id="detCount"></div>
+      </div>
+    </div>
+    <button type="button" class="det-nav next" onclick="detailStep(1)" aria-label="Next">›</button>
+  </div>
+
+  <script>
+    const LISTINGS = [
+    {% for l in listings %}{
+      id: {{ l.id|tojson }}, rank: {{ loop.index }},
+      title: {{ l.title|tojson }},
+      price: {{ ('%.2f'|format(l.price))|tojson }},
+      score: {{ (l.interest_score if l.interest_score is not none else none)|tojson }},
+      reason: {{ (l.reason or '')|tojson }},
+      cond: {{ (l.raw_condition.label or 'condition unspecified')|tojson }},
+      broken: {{ (l.working_status == 'broken')|tojson }},
+      loc: {{ (l.item_location or '')|tojson }},
+      seller: {{ (l.seller or '')|tojson }},
+      imgs: {{ (l.images or [])|tojson }},
+      url: {{ l.url|tojson }},
+      liked: {{ (l.id in liked_ids)|tojson }},
+      disliked: {{ (l.id in disliked_ids)|tojson }},
+      factors: {{ (l.score_factors or [])|tojson }},
+      narrative: {{ (l.score_narrative or '')|tojson }},
+      specifics: {{ (l.item_specifics or {})|tojson }},
+      description: {{ (l.description or '')|tojson }},
+      age: {{ (l.listed_at | age)|tojson }}
+    }{{ "," if not loop.last }}
+    {% endfor %}];
+    const PAGE_MODE = {{ mode|tojson }};
+    const LLM_ON = {{ (result.judge_kind and 'keyword' not in result.judge_kind)|tojson }};
+    let detIdx = -1, detPhoto = 0;
+
+    function bigImg(u){ return u ? u.replace(/s-l\d+\.(webp|jpg|jpeg|png)/i, 's-l1600.$1') : ''; }
+
+    function setPhoto(i){ detPhoto = i; renderGallery(LISTINGS[detIdx]); }
+    function renderGallery(l){
+      const imgs = l.imgs || [];
+      if (!imgs.length){
+        document.getElementById('detImgWrap').innerHTML = '<span class="noimg">No image captured</span>';
+        return;
+      }
+      if (detPhoto >= imgs.length) detPhoto = 0;
+      const big = bigImg(imgs[detPhoto]);
+      let html = '<div class="gmain">'
+        + (imgs.length > 1 ? '<span class="gcount">' + (detPhoto+1) + ' / ' + imgs.length + '</span>' : '')
+        + '<img src="' + big + '" alt="" referrerpolicy="no-referrer" '
+        + 'onerror="this.onerror=null;this.src=\'' + imgs[detPhoto] + '\'"></div>';
+      if (imgs.length > 1){
+        html += '<div class="gthumbs">' + imgs.map(function(u, i){
+          return '<button type="button" class="gthumb' + (i===detPhoto ? ' active' : '')
+            + '" onclick="setPhoto(' + i + ')"><img src="' + u + '" alt="" referrerpolicy="no-referrer"></button>';
+        }).join('') + '</div>';
+      }
+      document.getElementById('detImgWrap').innerHTML = html;
+    }
+
+    function renderDetail(){
+      const l = LISTINGS[detIdx]; if (!l) return;
+      renderGallery(l);
+      document.getElementById('detTitle').textContent = l.title;
+      document.getElementById('detPrice').textContent = '$' + l.price;
+      document.getElementById('detScoreWrap').innerHTML =
+        (l.score !== null) ? '<span class="score num">' + l.score + '</span>' : '';
+      renderExplanation(l);
+      let facts = '<b>' + (l.broken ? '⚠ flagged not working' : l.cond) + '</b>';
+      if (l.age) facts += ' · ' + l.age;
+      if (l.loc) facts += ' · ' + l.loc;
+      if (l.seller) facts += ' · seller ' + l.seller;
+      document.getElementById('detFacts').innerHTML = facts;
+      renderSpecs(l);
+      renderDesc(l);
+
+      let actions = '<a class="buy" href="' + l.url + '" target="_blank" rel="noopener">Full listing on eBay ↗</a>';
+      if (l.liked) actions += '<span class="tag liked">♥ Reference</span>';
+      else actions += '<button type="button" class="like" title="Like — teach your Scout"'
+        + ' data-id="' + l.id + '" data-title="' + escAttr(l.title) + '" data-mode="' + PAGE_MODE
+        + '" onclick="fromDetailLike(this)">♡ Like</button>';
+      if (l.disliked) actions += '<span class="tag passed">✕ Passed</span>';
+      else actions += '<button type="button" class="like down" title="Not interested"'
+        + ' data-id="' + l.id + '" data-title="' + escAttr(l.title) + '" data-mode="' + PAGE_MODE
+        + '" onclick="fromDetailDislike(this)">✕</button>';
+      document.getElementById('detActions').innerHTML = actions;
+
+      document.getElementById('detCount').textContent =
+        (PAGE_MODE==='contenders' ? '#' + l.rank + '  ·  ' : '') + (detIdx+1) + ' of ' + LISTINGS.length;
+    }
+    const IMPACT = {
+      'strong+': {sym:'++', word:'strong',   cls:'pos'},
+      '+':       {sym:'+',  word:'supports', cls:'pos'},
+      'neutral': {sym:'·',  word:'neutral',  cls:'neu'},
+      '-':       {sym:'−',  word:'slight',   cls:'neg'},
+      'strong-': {sym:'−−', word:'strong',   cls:'neg'}
+    };
+    // Item specifics worth showing first (the rest follow); from eBay getItem (D41).
+    const SPEC_ORDER = ['Model','Year Manufactured','Movement','With Original Box/Packaging',
+      'With Papers','Reference Number','Type','Display','Dial Color','Dial Pattern',
+      'Case Material','Case Size','Features','Style','Country of Origin','Vintage','Department'];
+    function renderSpecs(l){
+      const el = document.getElementById('detSpecs');
+      const s = l.specifics || {}; const keys = Object.keys(s);
+      if (!keys.length){ el.hidden = true; return; }
+      const ordered = SPEC_ORDER.filter(function(k){return s[k]})
+        .concat(keys.filter(function(k){return SPEC_ORDER.indexOf(k)<0}));
+      el.innerHTML = '<span class="sl">Item specifics</span><div class="spec-grid">'
+        + ordered.map(function(k){
+            return '<span class="sk">' + escHtml(k) + '</span><span class="sv">' + escHtml(s[k]) + '</span>';
+          }).join('') + '</div>';
+      el.hidden = false;
+    }
+    function renderDesc(l){
+      const el = document.getElementById('detDesc');
+      if (!l.description){ el.hidden = true; return; }
+      el.innerHTML = '<span class="dl">Description</span><div class="dtext">' + escHtml(l.description) + '</div>';
+      el.hidden = false;
+    }
+    function renderExplanation(l){
+      const rWrap = document.getElementById('detReasonWrap');
+      const bWrap = document.getElementById('detBreakdown');
+      const btn   = document.getElementById('detExplainBtn');
+      const hasDetail = l.factors && l.factors.length;
+      if (hasDetail){
+        document.getElementById('detFactors').innerHTML = l.factors.map(function(f){
+          const m = IMPACT[f.impact] || IMPACT['neutral'];
+          return '<div class="fac ' + m.cls + '"><span class="fsym">' + m.sym + '</span>'
+            + '<span class="fsig">' + escHtml(f.signal) + '</span>'
+            + '<span class="fw">' + m.word + '</span></div>';
+        }).join('');
+        document.getElementById('detNarrative').textContent = l.narrative || '';
+        document.getElementById('detNarrative').hidden = !l.narrative;
+        bWrap.hidden = false; rWrap.hidden = true; btn.hidden = true;
+        return;
+      }
+      // No breakdown yet: show the one-liner, and offer to fetch the full detail.
+      if (l.reason){ document.getElementById('detReason').textContent = l.reason; rWrap.hidden = false; }
+      else { rWrap.hidden = true; }
+      bWrap.hidden = true;
+      btn.hidden = !(LLM_ON && l.score !== null);
+      btn.disabled = false; btn.textContent = 'Explain in detail';
+    }
+    function explainCurrent(){
+      const l = LISTINGS[detIdx]; if (!l) return;
+      const btn = document.getElementById('detExplainBtn');
+      btn.disabled = true; btn.textContent = 'Analyzing…';
+      fetch('/explain/' + encodeURIComponent(l.id))
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          l.factors = d.factors || []; l.narrative = d.narrative || '';
+          if (LISTINGS[detIdx] === l) renderExplanation(l);
+        })
+        .catch(function(){ btn.disabled = false; btn.textContent = 'Explain in detail'; });
+    }
+    function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function escAttr(s){ return String(s).replace(/"/g,'&quot;'); }
+    function openDetail(i){ detIdx = i; detPhoto = 0; renderDetail(); document.getElementById('detailModal').hidden = false; }
+    function closeDetail(){ document.getElementById('detailModal').hidden = true; }
+    function detailStep(d){ if (detIdx<0) return; detIdx = (detIdx + d + LISTINGS.length) % LISTINGS.length; detPhoto = 0; renderDetail(); }
+    // Like / dislike from inside the detail view: close it, then reuse the existing flow.
+    function fromDetailLike(btn){ closeDetail(); openLike(btn); }
+    function fromDetailDislike(btn){ closeDetail(); openDislike(btn); }
+    // Click the dark backdrop (outside the card / arrows) to close.
+    document.getElementById('detailModal').addEventListener('click', function(e){
+      if (e.target === this) closeDetail();
+    });
+
+    function openLike(btn){
+      document.getElementById('likeTitle').textContent = btn.dataset.title;
+      var f = document.getElementById('likeForm');
+      f.action = '/like/' + btn.dataset.id;
+      f.reason.value = '';
+      document.getElementById('likeMode').value = btn.dataset.mode;
+      document.getElementById('likeModal').hidden = false;
+      setTimeout(function(){ f.reason.focus(); }, 30);
+    }
+    function closeLike(){ document.getElementById('likeModal').hidden = true; }
+    function openDislike(btn){
+      document.getElementById('dislikeTitle').textContent = btn.dataset.title;
+      var f = document.getElementById('dislikeForm');
+      f.action = '/dislike/' + btn.dataset.id;
+      f.reason.value = '';
+      document.getElementById('dislikeMode').value = btn.dataset.mode;
+      document.getElementById('dislikeModal').hidden = false;
+      setTimeout(function(){ f.reason.focus(); }, 30);
+    }
+    function closeDislike(){ document.getElementById('dislikeModal').hidden = true; }
+    ['likeModal','dislikeModal'].forEach(function(id){
+      document.getElementById(id).addEventListener('click', function(e){ if (e.target === this) this.hidden = true; });
+    });
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape'){ closeLike(); closeDislike(); closeDetail(); }
+      var detailOpen = !document.getElementById('detailModal').hidden;
+      if (detailOpen){
+        if (e.key === 'ArrowLeft') detailStep(-1);
+        else if (e.key === 'ArrowRight') detailStep(1);
+      }
+    });
+    // Auto-dismiss the transient banners after a few seconds.
+    (function(){ var lb = document.getElementById('learnBanner');
+      if (lb) setTimeout(function(){ lb.remove(); }, 6000); })();
+    (function(){ var ft = document.getElementById('flashToast');
+      if (ft) setTimeout(function(){ ft.remove(); }, 7000); })();
+    // Show the "thinking" overlay while a synchronous re-score / fetch runs. The
+    // overlay clears itself when the new page loads after the redirect.
+    document.querySelectorAll('form.js-loading').forEach(function(f){
+      f.addEventListener('submit', function(){
+        document.getElementById('loadingMsg').textContent = f.dataset.loading || 'Working…';
+        document.getElementById('loadingOverlay').hidden = false;
+      });
+    });
+  </script>
+  <div id="loadingOverlay" class="loading-overlay" hidden>
+    <div class="loading-card">
+      <div class="spinner"></div>
+      <div class="loading-msg" id="loadingMsg">Re-scoring listings…</div>
+      <div class="loading-sub">Reading every listing against your taste brief — a few seconds.</div>
+    </div>
+  </div>
+</body>
+</html>

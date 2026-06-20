@@ -1,0 +1,408 @@
+# Vintage Timex Scout: Build Plan
+
+A triage tool that turns scattered, high-volume marketplace listings into a short, ranked, explained shortlist of vintage Timex watches worth a collector's attention, filtered to budget, condition, and taste.
+
+> **Brief, in one line:** build a tool that syncs active listings, surfaces ones that match my preferences (under $50 total including shipping, not explicitly broken, interesting), and highlights purchase candidates.
+
+This document is the plan: what we are building, why, and how. It is also the running record of the decisions behind the scope (Appendix A).
+
+## Contents
+
+1. [Problem](#1-problem)
+2. [Jobs To Be Done](#2-jobs-to-be-done)
+3. [Goals and Success Criteria](#3-goals-and-success-criteria)
+4. [Scope: the MVP Cut-Line](#4-scope-the-mvp-cut-line)
+5. [Requirements](#5-requirements)
+6. [Design Considerations](#6-design-considerations)
+7. [System Design](#7-system-design)
+8. [Tech Stack](#8-tech-stack)
+9. [User Story Map: Now / Next / Later](#9-user-story-map-now--next--later)
+
+Appendices: [A. Decision Log](#appendix-a-decision-log-scope-rationale) · [B. Marketplace Assessment](#appendix-b-marketplace-assessment) · [C. Original System Flow (v1)](#appendix-c-original-system-flow-v1)
+
+---
+
+## 1. Problem
+
+Vintage Timex is abundant and cheap, so the problem is not scarcity. It is volume, scatter, and repetitive judgment.
+
+* **Scatter.** Listings are spread across eBay, Etsy, and others. Each site gets checked by hand, separately, repeatedly.
+* **Volume and noise.** We expect many listings, and assume a large share are irrelevant, overpriced, or broken. The few worth attention are buried. Actual volume and quality mix are unverified until we pull live data, so this is a working assumption (see Design Considerations).
+* **Judgment load.** Taste is implicit and hard to state, so triage is manual work repeated listing by listing.
+
+The collector has no single view of worth-buying listings across marketplaces. Keeping up means manual cross-site checking, sifting high-volume noise, and judging each listing against fuzzy taste, which wastes time and risks missing or misjudging a good piece.
+
+**What the product does.** It collapses multiple marketplaces into one explained shortlist of top contenders, filtered to budget, condition, and taste. The MVP proves the full pipeline (pull, filter, judge, surface, act) on a single marketplace, eBay; more sources follow (see Scope).
+
+**Why Timex only.** A deliberate scope choice: we are solving for one person, and that person collects Timex, so other brands are irrelevant. A multi-brand filter is tempting but off the table for now (revisit later).
+
+---
+
+## 2. Jobs To Be Done
+
+These are the collector's real jobs, independent of any product: what the person has to do today, by hand.
+
+1. **Discover.** Go to multiple marketplaces and search for new Timex listings.
+2. **Triage.** Apply judgment and taste to find the pieces that are relevant and interesting, sift past the irrelevant, overpriced, and broken, and do it fast.
+3. **Stay current.** Keep watching for new and relisted pieces over time, so good ones are not missed.
+4. **Act before it is gone.** Move quickly on the best opportunities before someone else does.
+
+---
+
+## 3. Goals and Success Criteria
+
+> **Where the value lives.** The marketplace integration, the hard gate, and adjustable filters are low-risk and largely deterministic, the easy part. The make-or-break is the quality of the interestingness ranking: for every 100 listings, can it pinpoint the one or two worth attention without losing the ones the user would have wanted? That quality is the whole point of the tool, and the bar the MVP must clear. Everything else is plumbing in service of it.
+
+The MVP is "working" if, given a pool of real listings that includes pieces resembling the three ground-truth watches from the brief, the tool:
+
+1. Surfaces a small set of top contenders, ordered by the LLM's interestingness score, with the full gated set available to browse on demand. (How the score is produced is in System Design, boxes 4 to 6.)
+2. Applies the hard filters correctly and checkably: budget by item price (at or under $50), and excludes everything explicitly broken (a dead battery is fine).
+3. Orders the contenders sensibly against the ground truth: pieces resembling the three example watches land near the top, and clearly irrelevant or junk listings do not.
+4. Makes the reason for each pick clear to the user. The form this takes (a one-line reason, a badge, a pill, a highlight) is a UI choice, decided later.
+
+**Defining and evaluating "interesting."** The definition is explicit and inspectable: it is the keyword profile, built from the three example watches and updated by likes. Judging how well it surfaces is unavoidably subjective, so the MVP bar is a reasonable ranking, sanity-checked by eye against the ground-truth set, not a formal accuracy metric. The learning loop is built in the MVP, but proving it measurably improves quality over time is not a hard MVP success bar.
+
+**Shipping and landed cost are deferred.** The brief's budget is "under $50 including shipping", but the MVP gates on item price only, from a single CAD source (ebay.ca). Computing a true landed cost (adding shipping to M6K1V8, currency-normalized) is a secondary feature for later: at this price point the gap is usually small, and it is not the core value of the tool (see Decision Log D28).
+
+**Ground truth (taste seed):** the three watches in the brief.
+`ebay.ca/itm/377073705816`, `ebay.ca/itm/117111976291`, `etsy.com/ca/listing/4469739360`.
+
+> **What the ground-truth watches actually are (fetched live, 2026-06-19).** We
+> pulled all three rather than guessing — the taste was broader than assumed:
+> (1) a **Timex Easy Reader Logo Quartz** (clean, legible, *quartz*), (2) a
+> **"Breyers" ice cream Timex La Cell** (advertising / novelty character dial),
+> (3) a **Timex Marlin with a green bullseye dial** (mechanical calendar, ~1992;
+> read for taste keywords only — Etsy stays out of MVP scope, D3). Plus the
+> brief's explicit "interesting" quote: *"Collabs (or collaborations), deadstock,
+> vintage models."* Together the taste is **distinctive / characterful dials**
+> (advertising, novelty, bullseye), **named vintage model lines** (Marlin), and
+> **collectibility** (collabs, deadstock) — across both quartz and mechanical,
+> and condition-tolerant. The keyword seed (`profile.py`) was recalibrated to
+> match. This matters: the success bar is ranking against these examples, so
+> seeding from a *guess* would have made the ranking subtly wrong (D32).
+
+---
+
+## 4. Scope: the MVP Cut-Line
+
+Mapped to the jobs in Section 2, the MVP serves Discover, Triage, and a path to Act. Stay current (awareness and tracking) is deferred: the first priority is making sure the tool surfaces quality insights here and now; notifications and tracking can be layered on afterward.
+
+**In (Now):**
+* Timex only.
+* eBay live, single marketplace (ebay.ca, prices in CAD).
+* On-demand pull.
+* Map listings into one shared format (the `Listing` schema; explained in System Design).
+* Hard gate: item price at or under $50; exclude explicitly broken (a deterministic check on the listing's stated condition field and keywords like "for parts").
+* Taste: an editable natural-language **taste brief** (markdown) — the brief's guidance + the three example watches + watches you like — that the LLM reads; editable by hand. *(Revised from a hidden keyword profile — D33; seamless because the brief slots into the same "taste in → score out" step, just as prose instead of weights.)*
+* Interestingness judgment: the LLM scores **every** gated listing 0–100 against the taste brief, with a reason for the contenders. *(Revised from scoring only a keyword-selected top pool — D33; once volume measured manageable and the thinking-off Flash judge was cheap/fast, scoring all was feasible and more accurate.)*
+* Learning loop: liking or passing on a watch (from anywhere) updates the taste brief; you **Reapply** to re-score the batch. *(Re-scoring is batched on demand, not live per click — D39, a cost decision; the loop still "improves with use," applied deliberately.)*
+* Top contenders surfaced, with option to view all.
+* Link out to the original marketplace listing (the user buys there, not in the tool).
+
+**Out (deferred, reasons logged in Appendix A: Decision Log):**
+* Additional marketplaces, Etsy included (Later, after higher-priority single-source work; prove one platform first). See Appendix B: Marketplace assessment.
+* Chrono24 (wrong inventory, no API; do not build).
+* Option to select other brands: the tool is built specifically for the nuance of Timex watches (see D23).
+* Heavier personalization: per-user profiles and a "For You" model from accumulated up/down signal are deferred. *(Negative signal — a downvote — was originally deferred but is now in the MVP: it adds a soft, reasoned, editable "Passed on" note to the taste brief. See D16/D35.)*
+* Notifications and change-detection.
+* Piece-history.
+* Shipping and landed cost in the budget filter (the MVP gates on item price); currency normalization for multi-currency sources.
+* Shipping-cost estimator.
+* Full persistence layer / datastore: lets the tool remember listings across pulls over time (recognize new vs. already-seen) and power awareness/alerts. The MVP keeps only the taste profile, in a lightweight store.
+* Automated scheduled pulls at a configurable frequency, for example daily or weekly (the MVP pulls on demand).
+
+> **MVP is the thinnest slice that does the whole job end-to-end** (source, gate, judge, present, act, learn) for one brand, one live source, on demand. Everything deferred was cut for an explicit reason (value, effort, or unresolved unknowns), not for lack of time.
+
+### Non-Goals (deliberate, not oversights)
+* **Single user.** This is a tool for one collector (the person in the brief), not a multi-user product. No accounts and no per-user data separation.
+* **No login or security hardening.** The setup is single-user and low-risk. The only sensitive field is a shipping postal code, and it is hard-coded (M6K1V8), so authentication, sessions, and access control are out of scope.
+* **Not a commercial product.** Not built to resell, re-skin, or deploy for others. Every decision optimizes for one collector's value, not for generality.
+* **Not a polish or design exercise.** The UI is deliberately simple. Effort goes into the core value (surfacing quality recommendations), not visual styling or refinement. Polish is not the point of this project.
+
+---
+
+## 5. Requirements
+
+### Functional (pipeline spine: source, filter, decide, present, act, learn)
+| ID | Requirement |
+|----|-------------|
+| FR-1 | **Source.** Pull active Timex listings from eBay (live API) and normalize into one `Listing` schema. The schema and adapter design keep additional sources pluggable (Etsy and others come later). |
+| FR-2 | **Budget basis.** The MVP gates on item price from a single-currency source (ebay.ca, CAD). Landed cost (item price plus shipping to M6K1V8) and currency normalization are deferred to the later shipping feature (see D28). |
+| FR-3 | **Gate (deterministic, yes/no).** Two pass/fail checks, no model judgment: is item price at or under $50, and is the listing free of explicit broken signals (structured condition field plus keywords; a dead battery is fine)? Fail either and the listing is dropped. |
+| FR-4 | **Decide (interesting).** The LLM scores **every** gated listing 0–100 against a natural-language **taste brief** (the brief's guidance + the 3 example watches + liked watches), and writes a one-line reason for the contenders. No keyword pre-check selects a pool: at the measured volume (~420) the LLM scores them all. *(Revised — the original design used a keyword pre-rank to cap an LLM pool; once volume turned out low we moved scoring entirely to the LLM. The keyword pre-rank survives only as the no-LLM fallback and a volume guard. See D33.)* |
+| FR-5 | **Present.** Top contenders in a web UI, with an option to view all gated listings (the over-$50 and broken ones are already dropped). Each card shows hero image and gallery (loaded from the marketplace's URLs, not stored), title, item price, stated condition, interest score with reason, and link. |
+| FR-6 | **Act.** Click through to the original listing. |
+| FR-7 | **Learn.** Liking a watch (from anywhere, including view-all) extracts its keywords into the taste profile and re-ranks; the profile is also editable by hand. |
+
+### Non-functional (the differentiators)
+| ID | Requirement |
+|----|-------------|
+| NFR-1 | **Explainable**, at two altitudes. *Per item:* every surfaced piece carries a human-readable reason naming the specific taste signals that earned its score (e.g. "NOS, boxed, advertising dial") — never the price, since every listing is already gated ≤ $50. *Per system:* the Manage Scout tab carries a "How a score is decided" rule-brick — the 0–100 rubric bands (90–100 standout / 70–89 on-taste / 40–69 ordinary / 0–39 off-taste) and the signals the Scout weighs — so the user has a mental model for why any score landed where it did. |
+| NFR-2 | **Cost-aware.** Source-side filters and the deterministic gate cut volume before the LLM. The LLM then scores the gated set with a cheap Flash-tier model, *thinking disabled*, in a two-pass design (scores for all, reasons for the few) — a full re-score is ~$0.02–0.03. Critically, **taste edits don't auto-re-score** (D39): likes/passes/edits are queued and applied in one batched **Reapply**, so a curation session costs one re-score, not one per click. A keyword pre-rank remains a cost guard if volume ever spikes past `MAX_LLM_SCORE`. See "LLM cost & token budget" in §7. |
+| NFR-3 | **Resilient.** A source failing degrades gracefully and the demo still renders; once there are multiple sources, one failing never breaks the others. |
+| NFR-4 | **Extensible.** Adding another marketplace later is a small, contained job: write one converter that turns its listings into the shared format the rest of the tool already uses, and nothing else has to change. |
+| NFR-5 | **Honest.** Uncertainty (low confidence, unknown condition) is shown, not hidden. |
+
+---
+
+## 6. Design Considerations
+
+Open constraints and tradeoffs that shaped the design. The mechanism itself is in Section 7.
+
+**Volume and cost are unknown until we measure.** Vintage Timex is assumed abundant, so a single pull may return hundreds or thousands of listings, unconfirmed until eBay is wired. LLM cost scales directly with how many listings reach the judge, so per-run cost is also unproven. Two consequences: the design handles large result sets from day one (cap per source, surface top contenders, paginate the rest), and the gate-then-pre-rank funnel exists to keep the LLM off the full volume (plus a cheaper text model for the MVP judge, and vision deferred as the most expensive step). The pre-rank is a hedge under the assumption that volume is high; on the first live pull we record real counts and cost and revisit, including whether the pre-rank is needed at all if volume turns out low.
+
+> **Measured (2026-06-19).** A single "vintage timex watch" search on ebay.ca returns **10,000+** results — volume is real, and high. This confirmed the funnel and added a step in front of it: **source-side filtering (box 0)**. We push eBay's own native filters into the query (category = Wristwatches, item price ≤ $50, exclude "for parts/not working") so ~10,000 collapses to a bounded, relevant, deduped ingest (~400 across a few model-line queries) *before* a single listing reaches our code. Box 0 only removes what the deterministic gate would drop anyway, so it costs no recall (D16) — movement, gender, and taste signals are left for the LLM judge (which now scores every gated listing; see D33). The gate still earns its place: ~28 of the captured "used" listings carry broken *text* ("FOR PARTS OR REPAIR", "not working") that eBay's structured filter misses. See D29 and `docs/data-capture.md`.
+
+**Noise reduction is the core job.** The deterministic gate (price, condition) is the primary volume control. It runs before the UI renders and before any LLM call, so neither the user nor the token budget ever sees anything but survivors.
+
+**Lead with the few; hide nothing.** The UI surfaces a small set of top contenders and keeps the full gated set one click away ("view all"). Only the gate removes listings; the LLM score merely orders what is left, so a low score never buries a watch for good.
+
+**The learning loop is in the MVP, and demoable without persistence.** Liking a watch updates the taste brief; you Reapply to re-score, in one session, in memory, so the ranking visibly improves with use and the demo's centerpiece needs no datastore. *(Re-scoring is batched on demand rather than live-per-click — a cost decision, D39.)* The profile is tiny, so saving it to a small file (to survive a restart) is optional; only the larger datastore for cross-session history and new-vs-seen is deferred.
+
+**Listing staleness.** Listings sell or expire and should stop being shown. In the MVP this is automatic: each run is a fresh pull, so only currently-active listings appear and stale ones do not return.
+
+---
+
+## 7. System Design
+
+This is the MVP pipeline, end to end. **This is version 2** — the architecture evolved as we measured real volume and refined the taste model. The original v1 funnel is preserved in [Appendix C](#appendix-c-original-system-flow-v1); "what changed" is summarized below the diagram.
+
+```mermaid
+flowchart TD
+    EB["1a. eBay adapter\n(live API / cached snapshot)"] --> NORM
+    ET["1b. Etsy adapter\n(wired — pending API approval)"] --> NORM
+    NORM["2. Normalize to one Listing schema"] --> GATE
+    GATE{"3. Hard gate (deterministic)\nbrand = Timex · not broken\n(price <= $50 applied upstream at fetch — box 0)"}
+    GATE -- "fail / broken" --> DROP["dropped"]
+    GATE -- "pass" --> SCORE["4. LLM scores EVERY listing\n0-100 vs. the taste brief\n+ broken flag (backstop)"]
+    BRIEF["Taste brief (editable .md)\nguidance + 3 examples\n+ liked references − passed-on"] --> SCORE
+    SCORE -- "broken-flagged" --> DROP
+    SCORE --> RANK["5. Order by score\ncontenders = score >= threshold (on-taste)"]
+    RANK --> UI["6. Present (FastAPI + HTML)\ncontenders / view-all / Manage Scout"]
+    UI --> ACT["7. Act: click out to the listing"]
+    UI -->|"like (save / refine) · downvote (with reason)"| BRIEF
+```
+
+**Version 2 — what changed from the original (v1, Appendix C):**
+- **Two sources, not one.** eBay (live API or cached snapshot) **+ Etsy** (wired, pending API approval). Re-pull fans out to both, each emits the same `Listing`, and one source failing never breaks the other (NFR-3). A tri-state source dot shows each: 🟢 live / 🟡 keys-set-but-not-live / 🔴 no key.
+- **LLM scores everything; the keyword pre-rank left the critical path.** Volume measured low (~420 gated), so the LLM judges *every* gated listing against a **natural-language taste brief** instead of a keyword profile feeding a small top pool (D33). The keyword pre-rank survives only as a no-LLM fallback / cost guard.
+- **The gate is brand + not-broken** (price is filtered upstream at fetch, box 0), and not-broken is now **two-layer** — deterministic keywords *plus* an LLM `broken` flag backstop (D34, BUILD_JOURNAL Entry 17).
+- **Contenders by a justified score threshold** (the rubric's on-taste floor), not a fixed pool size (D36) — and nothing is hidden, since every listing is ranked in "View all".
+- **Two-directional, reasoned learning:** likes (save vs. refine) and downvotes (with an optional reason) edit the taste brief (D35–D37), managed on a dedicated **Manage Scout** tab.
+
+**Architectural heart.**
+* **Source-side filtering first (box 0).** Before ingest, eBay's own native filters (category = Wristwatches, item price ≤ $50, exclude for-parts) cut a 10,000+ result set to a bounded, relevant, deduped pool. This is the cheapest noise cut — it happens in the query, costs nothing, and removes only what the gate would drop anyway. Added after measuring real volume (see Design Considerations, D29).
+* **Cheap work first.** A deterministic gate does the no-judgment jobs — brand (Timex-only, D34) and not-broken (condition field plus broken keywords). Item price is already filtered upstream at fetch (box 0), so in practice the gate is the not-broken + brand check.
+* **The LLM scores everything (revised).** At the measured volume the LLM scores *every* gated listing 0–100 against the taste brief, not a keyword-selected pool. Cheap and fast enough at ~420 (see the LLM-refinement note below); the keyword pre-rank is kept only as the no-LLM fallback and a volume guard.
+* **A natural-language taste brief drives ranking.** The taste is an editable markdown "brief" (the brief's guidance + the 3 example watches + liked watches), not a keyword list — the LLM reads it when scoring. Liking a watch appends it to the brief and re-scores. This learning loop is in the MVP.
+* **Pluggable sources.** Every source emits the same `Listing` record, so adding a marketplace later is one small converter, not a rewrite.
+
+### Listing schema (normalized)
+Each marketplace returns its data in its own format. "Normalizing" means converting every source into one shared record (the `Listing`) with the same fields, so everything downstream (the gate, the judge, the UI) deals with one format and does not care which marketplace a listing came from. The record:
+`source`, `id`, `url`, `title`, `raw_condition` (structured plus free text), `price` plus `currency`, `item_location`, `images` (URLs, not stored files), `seller`, `listing_end`, `raw` (debug blob).
+Added downstream: `working_status`, `disclosed_damage`, `interest_score`, `reason`.
+Future fields (deferred with the shipping feature): `shipping_cost`, `landed_cost_cad`.
+
+### How the gate works (FR-3)
+The gate is three deterministic yes/no checks: **brand** (must be a Timex — D34, since eBay's fuzzy search leaks a Seiko/Lorus Mickey-Mouse watch), **price** (≤ $50), and **not-broken** (structured condition field says non-working/for-parts, or the text has obvious broken keywords). A dead battery is fine, so "needs a battery" listings pass.
+
+Note on price: it is already filtered **upstream at fetch** (box 0 / the eBay query caps item price at $50), so by the time listings reach the gate they are all ≤ $50 and the price check almost never fires — in practice the gate is doing the **brand + not-broken** work. The price check stays as a defensive backstop in case a source ever returns unfiltered results.
+
+**Two-layer not-broken (the deterministic gate alone is too brittle).** A real bug surfaced this: deterministic keyword matching has endless gaps — it missed "Runs **4** Repair" (texting shorthand for "for repair") and "run**/**stop" (slash-separated "runs then stops"), so broken watches reached the contenders. Fix is two layers: (1) the deterministic gate, with an expanded pattern set, drops the obvious cases cheaply *before* any LLM call; (2) the **LLM scoring pass also returns a `broken` flag** — it reads the same listing and understands "Runs 4 Repair", "project watch", etc. natively — and anything it flags is removed entirely (a broken watch must never be a contender, FR-3). A dead/needs-battery is still fine in both layers. This is the E10 "LLM battery-vs-broken nuance" promoted from Later into the MVP, cheaply, because the LLM already scores every listing.
+
+### How the interestingness ranking works (revised)
+> **Revised from the original keyword-funnel design.** The plan originally used a cheap keyword pre-rank to pick a small pool and ran the LLM on just that pool, to cap cost while volume was unknown. We measured volume (~420 after the gate) — low — so scoring moved entirely to the LLM (D33). The keyword pre-rank survives only as the no-LLM fallback and a cost guard if a future pull ever returns thousands. (The current v2 flow is the diagram at the top of this section; the original v1 funnel is in Appendix C.)
+
+The taste is an editable **taste brief** (markdown): the brief's definition of "interesting" (collabs, deadstock, vintage models), the three example watches, and any watches the user has liked. The LLM reads this brief and scores every gated listing:
+
+1. **Gate (no AI)** — already-≤$50 listings that are a Timex (D34) and not broken pass (~420).
+2. **LLM scores all (the one place AI ranks)** — each survivor gets a 0–100 alignment score against the taste brief, catching what keywords miss (an unlisted collab, a characterful dial, "deadstock" phrased ten ways).
+3. **Order and surface** — by score, tie-break cheaper-first. **Contenders = score ≥ a threshold** (not a fixed count), so the count reflects how many are genuinely on-taste; the rest stay in "view all".
+
+**Refining the LLM judge (tradeoffs).** Scoring ~420 listings in real time forced three design choices, worth recording:
+* **Two passes — a fast bulk scan, then a self-justifying re-judge.** Producing a 0–100 score *and* a written reason for all 420 is dominated by the reason text (output tokens), which is slow. So **pass 1 asks for scores only** (tiny output → all listings scored in a few big concurrent batches) — but this is treated as an *approximate candidate filter*, not the final word. **Pass 2 re-judges the contender candidate pool** (everyone scored within a margin of the bar) with a single combined call that returns *both* a reconciled score *and* the specific signal behind it. The pipeline thresholds on that reconciled score. This is what makes a surfaced score trustworthy: the model has to *name the signal* to justify the number, so a generic listing it can only describe as "generic" also scores below the bar and never reaches the standout tier. The two passes can't disagree on anything surfaced — see the "90 · generic" bug in Entry 20 of the build journal, which is exactly what this design closes. The trade: non-contenders far below the bar show a bulk score without a one-line reason.
+* **Thinking off.** Gemini 2.5-flash reasons internally by default; on a bulk scoring/classification task that is wasted effort and slow enough to time out. Disabling it (`thinkingConfig.thinkingBudget = 0`) cut a full score of ~420 from ~90s to ~15s — the single biggest speed lever.
+* **Taste edits are queued, not auto-applied (D39).** A like, pass, or brief edit updates the taste brief *instantly* (a file write — no LLM) and marks the scores "stale"; the ~390 listings are re-scored only when the user clicks **Reapply taste**. This batches a whole curation session — 40 likes/passes — into **one** re-score instead of 40, the single biggest token-cost lever in normal use (see "LLM cost & token budget" below). A full pull (Fetch Listings) and Reapply are the only two paths that spend scoring tokens.
+
+(An LLM scoring listings against a rubric is "LLM-as-judge"; here the rubric is the natural-language taste brief.)
+
+### LLM cost & token budget (NFR-2)
+Cost-awareness is a first-class design constraint here, not an afterthought — the tool is meant to be run and re-run, and a naive "re-score on every interaction" design burns tokens fast. The model is **Gemini 2.5 Flash** with thinking disabled.
+
+**What one full re-score (~390 gated listings) costs.** Three passes (see above): pass 1 scores all (~10.6k in / 4.6k out), pass 2 confirms the candidate pool of ~60 (~2.5k in / 1.8k out), pass 3 writes the granular breakdown for the ~8 contenders (~1k in / 1.1k out) — roughly **~14k input + ~7.5k output tokens**. At Gemini 2.5 Flash list prices (~$0.30 / 1M input, ~$2.50 / 1M output, *verify current rates*) that is **≈ $0.02–0.03 per full re-score**. The on-demand "Explain in detail" for a single view-all listing is ~1k in / 1.1k out ≈ **$0.003**.
+
+**Why the batched-reapply design matters (D39).** The dominant cost driver is *how often* we re-score, not the per-score price:
+
+| Action | Old (auto re-score) | New (D39, batched) |
+|---|---|---|
+| Like / pass / brief edit | ~$0.02 **each** (full re-score) | **$0** (file write; queued) |
+| Curate 40 listings in a session | ~40 × $0.02 ≈ **$0.80** | 1 Reapply ≈ **$0.02** |
+
+That is a **~40× reduction** for a typical curation session — the user can shape the brief freely and pay for exactly one re-score when they choose to apply it.
+
+**The levers, in order of impact:**
+1. **Thinking disabled** (`thinkingBudget = 0`) — cut a full score from ~90s to ~15s and the proportional token/compute spend. The single biggest lever.
+2. **Batched reapply (D39)** — N taste edits cost one re-score, not N.
+3. **Two-pass design** — the expensive full-set pass emits scores only (tiny output); reasons/breakdowns run on the small pool, not all ~390.
+4. **On-demand detail** — the granular breakdown is precomputed only for the ~8 contenders; everything else is explained lazily, only when its modal is opened.
+5. **`MAX_LLM_SCORE` volume guard** — if a pull ever returns thousands, the keyword pre-rank caps what reaches the LLM.
+
+**On the ~$5 spent to date:** that is almost entirely *development* iteration — many full pulls while building, the taste-extraction step, and (early on) runs *before* `thinkingBudget = 0` and batched reapply existed, which were several times more expensive each. In steady single-user operation, a session is a Fetch plus a Reapply or two — a few cents.
+
+### The taste system, and why it changed (the heart of the product)
+Getting "interesting" right is the whole point of the tool, so the taste model is worth its own summary. It went through three deliberate moves, each logged in the decision log and BUILD_JOURNAL:
+
+1. **Keyword pre-rank → LLM scores everything (D33).** The original plan scored listings with a keyword profile and only sent a small top pool to the LLM, to bound cost while volume was unknown. Once measured (~420 after the gate), volume was low enough that the keyword proxy was unnecessary *and* less accurate — keywords miss meaning (an unlisted collab, "deadstock" phrased ten ways). So the LLM now scores **every** gated listing, and keywords survive only as a no-LLM fallback / cost guard. The judge is the make-or-break; spend it here.
+
+2. **Keyword profile → an editable taste *brief* (D33).** Taste is no longer a hidden weighted keyword list but a **natural-language markdown brief** the user can read and edit: the brief's guidance (collabs, deadstock, vintage models), the three example watches, and references/passes the user adds. It is the explicit, inspectable rubric D4 always wanted — just in prose. This is what the LLM reads to score.
+
+3. **Two-directional, reasoned learning (D35–D37).** The brief learns from use: **liking** a watch (with a save-vs-refine choice, D37) adds it as a positive reference; **downvoting** (with an optional reason, D35) adds a soft, editable "Passed on" note so the model rates similar pieces lower without the user fearing it will mis-learn *why*. Both are managed on the **Manage Scout** tab, both re-score, and neither ever hard-excludes (D16). The reason-capture on downvotes is the key safety valve against attribution errors — the user states the why, the model doesn't guess.
+
+The throughline: **the definition of taste is a document the user owns and can see**, the LLM applies it to everything, and the user shapes it with reasoned positive and negative signal.
+
+---
+
+## 8. Tech Stack
+
+The stack, one bullet per layer:
+
+* **Language: Python.** Runs every step: calling the marketplace APIs, the gate, the LLM, and serving the web page. Chosen because eBay and Etsy have well-documented Python access and Python is the standard for working with LLMs.
+* **Web framework: FastAPI.** A Python tool for a small web server: it takes the request when the page opens and sends back the listings to display. Chosen for minimal setup and a fast path to a working page.
+* **Front end: server-rendered HTML.** Python assembles the finished HTML and hands it to the browser, so there is no separate front-end framework to build or maintain. Chosen as the simplest possible demo UI.
+* **Data sources: eBay Browse API (live), Etsy Open API v3 (wired, pending).** The official channels to pull listings programmatically instead of scraping. eBay uses a client-credentials app token (the app authenticates as itself, no per-user login) and is **live** — the production keyset is approved (account-deletion exemption auto-granted), and a Fetch pulls ~670 real Timex listings, each enriched with its full description + item specifics via `getItem` (D41). Etsy uses an API key and is wired pending its own approval. *(During the eBay approval wait, a browser-capture fixture stood in — D30; it's now the fallback, not the source.)*
+* **LLM: the judge — Google Gemini (Flash tier), provider-agnostic.** Scores **every** gated listing (~500–570 on a live pull) 0–100 against the natural-language taste brief, with a written reason for the contenders (two-pass: scores for all, reasons for the few — see "Refining the LLM judge"). Text-only — now *richer* text, since each listing is enriched with its eBay item specifics + description (D41); it still does **not** look at the photos (vision deferred, D13). **Match the model to the nature of the decision:** the judge is a *bounded, well-scoped text-scoring task* — rate short listing titles 0–100 against a rubric (the taste brief) and write a one-line reason. That is classification-with-justification, not deep multi-step reasoning, so a fast, inexpensive model (Gemini Flash, or Claude Haiku) is the right tier — paying for a frontier reasoning model here would buy little and cost more, against NFR-2 (cost-aware). The judge is written provider-agnostic (a `Judge` interface with Gemini, Claude, and a no-LLM keyword fallback): the provider is chosen by which API key is present, and any LLM error degrades to the deterministic keyword judge so the demo always renders (NFR-3). Gemini is the default to reuse an existing key; switching to Claude is a one-line change. See D31.
+* **State: lightweight, mostly in-memory.** Two small files in `state/`: the **taste brief** (`taste.md`, so taste survives a restart) and a **pull cache** (`last_pull.json`, so a restart/reload reuses the last fetch instead of re-hitting the API — a quota guard, D41; only "Fetch Listings" re-pulls). No results database: a full datastore for new-vs-seen and alerts is still deferred.
+
+---
+
+## 9. User Story Map: Now / Next / Later
+
+Epics run down the side (the pipeline spine first, then cross-cutting concerns), each sliced into Now / Next / Later.
+
+| Epic | Now (MVP) | Next | Later |
+|---|---|---|---|
+| **E1. Source and normalize** | eBay live; normalize to `Listing` | none | Etsy (second marketplace); local sources (Kijiji); cross-source dedup. Full source options in Appendix B. |
+| **E2. Filter / gate** | At or under $50 by item price; exclude explicitly broken | none | Landed cost (item price + shipping); FX to CAD for multi-currency; adjustable price cap; broaden-location toggle |
+| **E3. Decide: interesting** | LLM scores every gated listing 0–100 against an editable natural-language **taste brief** (the brief's guidance + 3 examples + liked watches); reasons for the contenders. *(Revised from keyword pre-rank + pool — D33.)* | Confidence score; smarter brief authoring | Rarity/desirability scoring |
+| **E4. Present (UI)** | Top contenders plus view-all plus a detailed card (gallery, specifics, description); filters: price min/max, min score, sort. *(Condition and source filters deferred to Next — D-QA.)* | Condition/source filter controls; group by model/era | Saved views; collection dashboard |
+| **E5. Act** | Click-out to listing | Save / shortlist | Watchlist management |
+| **E6. Recognize new vs. seen** | Snapshot only ("available now") | Persist seen-listings to recognize new vs. already-seen (avoid re-reviewing the same items) | Relisting detection. Price-history and price-drop tracking deprioritized (see D24) |
+| **E7. "Remember what I like" (taste agent)** | Editable natural-language **taste brief** seeded from the brief + 3 examples; **like** (confirmed) a watch to add it as a reference, or **downvote** (with optional reason) to soft-penalize similar; both re-score; managed on the **Manage Scout** tab; persists across restarts | Smarter brief authoring; confidence | "For You" ranking from accumulated signal; per-user profile |
+| **E8. "Hoping I don't miss something" (awareness)** | none (every run is fresh) | In-app "New since last pull" badge plus filter (needs E6) | Push: email/SMS digest of new candidates |
+| **E9. Shipping / landed cost** | none (MVP gates on item price) | none | Use provided shipping to compute landed cost (flag unknown); carrier-rate estimator (needs carrier API plus seller-location parsing) |
+| **E10. Condition assessment** | Two-layer not-broken: deterministic gate (structured condition + expanded keywords) **plus an LLM `broken` flag** in the scoring pass that catches the long tail of phrasings ("Runs 4 Repair", "run/stop") — broken is removed entirely. *(The LLM nuance, originally "Next", is now in the MVP — D-log / Entry 17.)* | Confidence on ambiguous "untested" | Vision: inspect photos for visible damage |
+
+Two epics are framed in the collector's own words: "Remember what I like" (E7), whose learning loop is already in the MVP, and "Hoping I don't miss something" (E8), which is future and waits on persistence.
+
+### UI shape (E4)
+Three views plus one card, with the taste profile visible and editable. Liking is part of the MVP and feeds the learning loop.
+* **Top contenders (default view):** the surfaced contenders up front, with a "view all" that reveals the full gated set, and a **Liked** view. Filters: price (min/max), min score, sort. *(Working-status and source filters deferred — Next.)* (Later: a personalized "For You" replaces the rule-ranked contenders.)
+* **Taste profile:** the three example watches and the keyword signals, shown so the user can see what taste the system is matching on. Editable by hand in the MVP, and updated automatically by likes.
+* **Liked / Interested:** likes (from anywhere, including "view all") populate this tab and update the taste profile.
+* **Card:** hero image, gallery, title, item price, stated condition, interest score plus reason, a like action, link.
+
+---
+
+## Appendix A: Decision Log (scope rationale)
+
+Each placement justified in value, effort, and risk terms.
+
+> ### The 5 decisions that most shaped the build (plain English)
+> Of everything below, these were the load-bearing calls — the ones that changed the product, not just a setting:
+> 1. **Let the AI read every listing — and drop the keyword shortcut.** We first planned to use keyword matching to narrow the pile before the AI saw it. Once we measured the real volume and saw the AI was fast and cheap, we let it judge *every* listing against a plain-English description of what the collector likes. More accurate — and that "taste" is now something the user can read and edit, not a hidden formula. *(D33.)*
+> 2. **One setting made the AI about 6× faster.** The AI normally "thinks out loud" before answering, which is wasted effort on simple scoring. Turning that off cut a full run from ~90 seconds to ~15 — which is what made "score everything" practical in the first place. *(thinkingBudget = 0.)*
+> 3. **We didn't wait on eBay.** eBay's data access took days to approve. Instead of stalling, we ran on real listings pulled through the browser, and built the tool so that switching to eBay's official live feed later was a one-line change — and it was. *(D30 → D29.)*
+> 4. **Editing your taste is free; re-scoring is one deliberate click.** Every thumbs-up could have triggered a full, paid re-score. Instead, changes pile up and you re-score once when you're ready — turning dozens of small charges into one. The cost is driven by *how often* you re-score, not the price of each. *(D39.)*
+> 5. **We made the AI show its work.** An AI score on its own is a black box. We force it to (a) never let a broken watch through, and (b) state the specific reason for each score *as it scores* — so a "95" always comes with its "why," and the two can never disagree. *(Entry 17 + 20.)*
+>
+> A close runner-up: **we feed the AI each listing's full eBay description and details (model, year, box/papers), not just the title — so it judges on real signal.** *(D41.)*
+
+| # | Decision | Category | Placement | Rationale |
+|---|---|---|---|---|
+| D1 | eBay as the live spine | Source (E1) | MVP | Only source that is high-volume, high-Timex-fit, and clean API (app token). |
+| D2 | Do not build Chrono24 | Source (E1) | Out | Luxury platform, near-zero sub-$50 Timex, no API. The adapter design leaves it addable later if it is ever worthwhile. |
+| D3 | Etsy as the second marketplace, but later (after higher-priority single-source work) | Source (E1) | Later | Start with one high-volume platform, prove the end-to-end workflow, and learn the data. Deepening that single source (ranking quality, the gate, landed cost) is higher priority than adding a second marketplace, so Etsy comes later, not next. It demonstrably sells vintage Timex (the brief's third example is an Etsy listing, and a native under-$50 vintage filter exists). |
+| D4 | Use an LLM to judge how "interesting" each listing is, instead of fixed keyword rules | Decide (E3) | MVP | "Interesting" is subjective and cannot be reduced to keyword rules. The LLM scores each listing against a rubric built from the collector's three example watches and writes a one-line reason. It can weigh signals like era, model line, collab or character dials, and deadstock, and it explains every call in plain language, so the shortlist is trustworthy rather than a black box. |
+| D5 | Deterministic gate before LLM | Architecture | MVP | Cost and speed: only pay for LLM on survivors. |
+| D6 | Shipping-unknown to include plus flag | Filter (E2) | Later (with shipping) | Part of the deferred shipping feature: when landed cost is added, items with unstated shipping are included and flagged rather than dropped (favor recall). Not in the MVP, which gates on item price (see D28). |
+| D7 | Learning loop (like to update the keyword profile, re-rank) in the MVP | Taste (E7) | MVP | Critical to the core value: the ranking should improve with use, and the loop is feasible in-session on a lightweight profile store (no full datastore). Heavier personalization (per-user "For You" from accumulated up/down signal) stays later. |
+| D8 | Awareness/notifications | Awareness (E8) | Next/Later | Depends on history; badge and filter cheap once detection exists; push is its own infra. |
+| D9 | Shipping cost estimator | Shipping (E9) | Later | Low dollar stakes at this price point; needs carrier API plus location data plus investigation. |
+| D10 | On-demand pull, not automated with alerts | Architecture | MVP | Thinnest end-to-end slice; the don't-miss vision is acknowledged and deferred. |
+| D11 | Full persistence layer (datastore) deferred; lightweight profile store in the MVP | Architecture | Next (enabler) | The MVP holds the taste profile in a lightweight store (in memory, optionally a small file) so the learning loop works now. The full datastore that E6 new-vs-seen and E8 awareness need is deferred to keep the MVP simple. |
+| D12 | Condition filtering is deterministic in the MVP (no separate LLM step) | Condition (E10) | MVP | The not-broken decision uses the structured condition field plus keywords, done once in the gate. A second LLM step re-judging condition would be redundant; the battery-vs-broken nuance is deferred to E10 (Next). |
+| D13 | Image/vision cosmetic inspection | Condition (E10) | Later | High effort, latency, and token cost: vision models are pricier and would run over many listings with several photos each. A photo also shows cosmetics, not whether the watch runs. Worth testing in a future phase. |
+| D14 | Condition-unknown is kept, not excluded | Condition (E10) | MVP | Favor recall: a listing with no stated condition is kept (the card shows condition as unspecified) rather than dropped, since only explicitly broken items are excluded. |
+| D15 | Listings aging out | Freshness (E6) | MVP non-issue | Stateless re-pull means freshness is free; expiry handling waits for persistence. |
+| D16 | Likes *and* downvotes (revised); taste never hard-rejects, only ranks | Decide (E3/E7) | MVP | Originally likes-only (negative signal deferred). Revised once taste became a natural-language brief: a **downvote** is now safe because it lands in an editable, visible "Passed on" section of the brief — not a hidden weight — and it **soft-penalizes only, never excludes** (miss-aversion: a false "not interesting" is the costliest error). To counter the attribution risk (the LLM penalizing the wrong characteristic), the downvote captures an **optional reason**, so the brief records *why*. Per-user "For You" from accumulated signal is still Later. See D35. |
+| D17 | Volume handling | Present (E4) | MVP | Gate doubles as volume control; cap, rank, paginate; ground with real counts on first pull. |
+| D18 | "Highlighted" as top-of-ranked in MVP | Present (E4) | MVP | Personalized For You needs signal plus persistence; the rule-ranked band is free now. |
+| D19 | Currency: single CAD source for the MVP | Filter (E2) | MVP (FX deferred) | The MVP pulls only ebay.ca (CAD), so no currency normalization is needed. FX to CAD matters only when adding multi-currency sources like ebay.com (USD), and is deferred with the shipping feature (see D28). |
+| D20 | Stack: Python, FastAPI, simple HTML | Tech stack | MVP | Natural LLM-glue language; both APIs have clean Python paths; fast to a demoable web surface. |
+| D21 | Single user; no multi-user or commercial generality | Scope | Out (non-goal) | Built for the one collector in the brief. Generality adds cost with no value to that user. |
+| D22 | No login, auth, or security hardening | Scope | Out (non-goal) | Single-user and low-risk; the only sensitive field is a hard-coded shipping postal code. |
+| D23 | Timex only; no multi-brand filter | Scope | Out (revisit later) | The user in the problem statement is specifically a Timex collector, so other brands are irrelevant. A brand filter is tempting but off the table for now; it can be revisited later. |
+| D24 | Deprioritize price-drop and listing-evolution tracking | Awareness (E8) | Out (deprioritized) | At a sub-$50 price point, price movement is not a meaningful buying signal, and tracking it means persisting and diffing every listing over time. The one case with value (an item dropping from over $50 into budget) is rare, and an adjustable price cap (D26) covers it more simply by letting the user widen the budget when they want. |
+| D25 | No browsable archive of past listings; MVP is live-only | Architecture | Out / Next (scoped) | A dead listing cannot be bought, so storing old listings to scroll through adds storage and UI for little value. The taste profile is kept in a lightweight store in the MVP (for the learning loop); a full datastore is only worth adding later for new-vs-seen, not an archive (see D11). |
+| D26 | Adjustable price filter (user-set budget cap) | Filter (E2) | Later | The MVP fixes the cap at $50 to match the brief, but the user may want to widen or tighten it. Low-effort flexibility, and it partly substitutes for price-drop tracking: instead of watching a $60 item fall to $50, the user can raise the cap to see it (see D24). |
+| D27 | Ranking is a funnel that surfaces top contenders, not a full sort | Decide (E3) / Present (E4) | MVP (cheap pre-rank in; specifics open) | Scoring or displaying hundreds of listings does not scale. The gate cuts volume, a cheap keyword pre-rank from the 3 examples narrows to a top pool, the LLM judge scores that pool, and the UI surfaces a small contender set with the rest browsable. The pre-rank is committed for the MVP to cap LLM cost; the pool size, score scale, contender count, and tie-break are open until first-pull volume and per-run cost are measured (see System Design boxes 4 to 6). |
+| D28 | Defer shipping and landed cost from the MVP; gate on item price | Filter (E2) | Out / Later | The brief's budget is "under $50 including shipping", but computing true landed cost needs shipping data plus currency normalization and adds complexity for a secondary signal. It is not the core value of the tool, and at this price point the gap is usually small. The MVP gates on item price (CAD, from ebay.ca); landed cost is added later. |
+| D29 | Source-side filtering as funnel box 0 (push eBay's native filters into the query) | Architecture / Filter (E2) | MVP | Measured volume is 10,000+ per broad search, so noise reduction must start *at the query*, not after ingest. eBay's own filters (category = Wristwatches, price ≤ $50, exclude for-parts) are the cheapest possible cut and collapse it to a bounded, relevant, deduped pool (~400). Safe because it only removes what the deterministic gate would drop anyway — no recall loss (D16); taste signals (movement, era, dial) are left for the pre-rank and LLM. The same filter set is encoded once (`sources/ebay_search.py`) and used by both the live Browse adapter and the browser-capture path. |
+| D30 | Browser capture as the interim data path while API access is pending | Source (E1) | MVP (interim) | The eBay developer portal was inaccessible before the deadline, and eBay blocks server-side/headless fetching. A real signed-in Chrome on the Mac mini is served normally, so we drive it through the filtered search URLs and scrape into the same Browse-API shape the adapter already normalizes (`scripts/ebay_capture.js`, `docs/data-capture.md`). This is a legitimate workaround, not bot-detection evasion (no proxies/spoofing/CAPTCHA). The live Browse API stays the production route — drop credentials in `.env`, zero code change. |
+| D31 | Judge model = Gemini Flash tier (cheap/fast), chosen by matching the model to the task | Decide (E3) | MVP | The interest judge is a bounded text-scoring task (score ~12 short titles 0–100 against an explicit keyword rubric + a one-line reason), not open-ended reasoning. The right tier is therefore a fast, inexpensive model, not a frontier one — a bigger model adds latency and cost for negligible quality on this shaped task (NFR-2). Default is Gemini Flash to reuse an existing key; the judge is provider-agnostic (`Judge` interface: Gemini / Claude-Haiku / keyword fallback), so the provider is set by which key is present and a missing key or API error degrades gracefully to the deterministic keyword judge (NFR-3). Claude Haiku is a one-line swap. Vision/larger models stay deferred (D13). |
+| D32 | Seed the taste profile from the *fetched* ground-truth watches, not a guess | Decide (E3) | MVP | The MVP's whole success bar is ranking against the three example watches (§3), so the keyword seed must reflect what they actually are. We fetched them live: an Easy Reader quartz and a Breyers-advertising La Cell — a quirkier, character-dial-leaning taste than the originally-guessed "mechanical Marlin collector", and one where quartz is fine. The seed was recalibrated to match, and the LLM keyword-extraction step (E3-Next, `extract_taste_keywords`) can regenerate it from the example text when a key is present. Lesson logged in BUILD_JOURNAL: guessing the ground truth would have made the core ranking subtly wrong. |
+| D33 | LLM scores **every** gated listing against a natural-language **taste brief** (revises D27's keyword pre-rank + top-N pool) | Decide (E3/E7) | MVP | Once volume was measured (~478, low) the pre-rank's cost hedge wasn't needed (D27 explicitly said to revisit). The LLM now scores all gated listings 0-100 against an editable markdown **taste brief** — seeded from the brief's guidance ("collabs, deadstock, vintage models") + the 3 example watches, grown by likes — which is the inspectable rubric D4 wanted, in prose. "Contenders" = real score ≥ threshold, not a fixed count. The keyword pre-rank survives only as the no-LLM fallback and a cost guard above `MAX_LLM_SCORE`. Made fast (~15s for ~420) by disabling Gemini's default "thinking" (the biggest lever) and a two-pass design (score all, then write reasons for the contenders only). Liking a watch is **confirmed via a modal** (the user opts in to influencing the agent), then appends it to the brief as a reference and re-scores (the learning loop, E7) — the cost is ~15s of latency, not money. Taste/references are managed on a dedicated **Manage Scout** tab (top-level nav), keeping the listings dashboard uncluttered. |
+| D34 | Brand filter in the gate: Timex-only | Filter (E2) / Scope (D23) | MVP | eBay's fuzzy search leaks non-Timex watches (a Seiko / Lorus Mickey-Mouse on a "mickey" query), which the LLM otherwise rewards for the character dial. Since the product is Timex-only (D23), the gate now drops any listing whose title/condition text doesn't mention "Timex" — a deterministic relevance check alongside price and not-broken. |
+| D35 | Downvote with an optional reason (revises D16's likes-only) | Decide (E7) | MVP | The taste-brief architecture makes negative signal safe: a downvote writes a soft, **editable, visible** "Passed on" line — not a hidden weight. The user flagged the real risk that an LLM mis-attributes *why* a watch was downvoted and over-generalizes; the mitigation is to capture an **optional reason** at downvote time (a small modal), so the brief records "pass on X — <reason>" rather than the model guessing. It **strongly penalizes matching pieces into the off-taste band (0–39, near 0 for a clear match) but never hides them** — they stay in "view all", ranked at the bottom (D16 miss-aversion). A passed-on trait **overrides an otherwise-positive trait**: if character dials are on-taste but the collector passes on Mickey Mouse, every Mickey watch drops to ~0 while Snoopy/advertising dials stay high (verified). The reason-capture is what keeps this surgical — the model penalizes only the named trait and honors the stated *why*, rather than over-generalizing. Likes and downvotes are mutually exclusive and managed on the **Manage Scout** tab; changes queue and apply on **Reapply** (D39). |
+| D36 | Contender threshold = the rubric's "standout" floor (90), a named band — not an arbitrary cutoff | Present (E4) / Decide (E3) | MVP | "Why ≥ 85?" was a fair challenge — any round number feels arbitrary. The threshold is the **rubric's own top band: 90 = "standout"** (the scoring prompt defines 90–100 = standout, 70–89 = on-taste, 40–69 = ordinary, 0–39 = off-taste), so "Top contenders" *is* the standout tier by definition, and it sits above the natural gap in the score distribution (on-taste clusters ≤ ~85). This gives a tight, meaningful shortlist (~25–30) rather than a long list. Crucially **nothing is hidden**: every listing is in "View all", ranked by score, so an 88 sits right below the contenders, not lost — and the **min-score filter** moves the cut. (We briefly tried 70 = on-taste floor, but that surfaced ~200 — too many for a "top" list; the standout band is the better default.) The per-band meaning is documented for the user on the Manage Scout "How a score is decided" rule-brick (NFR-1). |
+| D37 | "Like" offers save vs. refine, and (like dislike) captures an optional reason | Present (E4) / Taste (E7) | MVP | A like opens a modal with two choices: **"Just save it"** (a shortlist bookmark, no taste change) or **"Save & refine my Scout"** (adds a reference to the brief). The refine path is now **symmetric with the downvote**: it captures an optional **reason — what you like about it** ("the bullseye dial", "it's NOS") — appended to the brief as "- title — reason", so the LLM learns the *trait*, not just the one watch. Like the downvote, it **queues and does not re-score** until Reapply (D39). Saved-but-not-reference watches can be promoted to references later. This separates *bookmarking* from *teaching* and gives both positive and negative signal the same reasoned, batched shape. |
+| D41 | **Enrich every listing with eBay `getItem`** (full description + structured item specifics) and score on it — accept a slower Fetch for higher accuracy | Source (E1) / Decide (E3) | MVP | The summary search returns only title + price + condition + images; the judge was scoring on the **title alone**. eBay's `getItem` endpoint also returns the seller's **written description** and **structured item specifics** — Model, Year Manufactured, Movement, *With Original Box/Packaging* (the deadstock signal), Reference Number, dial, features — which map directly onto the taste brief and are far higher-signal than parsing a title. Decision (user, explicit): **enrich ALL ~670 listings every Fetch**, not just a candidate pool, for the highest-quality assessment. The cost is **one extra API call per listing** (~670/Fetch) and a slower Fetch (~+30s enrichment, parallelized 10-wide), but eBay's default quota is ~5,000 calls/day and this is a single-user tool fetched rarely (≲7×/day), so it stays within budget. Enrichment runs **once per fetch** (descriptions don't change), is **best-effort per item** (a failed/rate-limited `getItem` leaves that listing on summary data), and only applies to live pulls (fixture items stay title-only). The specifics + a description snippet are fed into all three judge passes via the listing row, and the full specifics + description are shown in the detail modal for the human's final call. Toggle with `EBAY_ENRICH=0`. *Note: the judge is still **text** (now richer text) — it does not look at the photos (vision deferred, D13).* **Pull cache (quota guard):** the fetched+enriched pull is cached to `state/last_pull.json`; a restart or code reload **reuses it (no eBay calls)** and only re-scores. Refining taste (Reapply) and restarts review the *existing* listings — **only the "Fetch Listings" button re-pulls from eBay** — so iterating on scores never burns API quota. |
+| D40 | "Liked" is a 4th funnel view; sort is by score or price and auto-applies | Present (E4) | MVP | The funnel now has a fourth stage after Top contenders — **♥ Liked** (green, tied to the card like-button color) — showing the count of watches the user has liked, *whether or not* they teach the Scout (references **and** save-only bookmarks). Its "View liked" pill opens a `/liked` view with the same filters/pagination. Sorting was clarified and fixed: the ambiguous "Interest" option is renamed **"Score: high → low"** (it sorts by the AI interest score — "Liked" is a *view*, not a sort), and the sort `<select>` now **auto-submits on change** (previously it silently did nothing until you also clicked Apply, which read as broken). Server-side sort already paginated correctly; the pager carries the sort param so price/score order **persists across pages**. |
+| D39 | Taste edits are **queued**, not auto-re-scored; one explicit **Reapply** batches them (cost control) | Taste (E7) / Cost (NFR-2) | MVP | Re-scoring all ~390 gated listings on **every** like/pass/edit was the dominant token cost — a 40-action curation session meant ~40 full re-scores (~$0.80) for what the user experiences as one round of teaching. Now a like/pass/brief-edit only mutates the taste brief (a file write, no LLM) and marks scores "stale"; a persistent banner shows what's queued and a **Reapply taste** button runs a single re-score for the whole batch (~$0.02). This is ~40× cheaper per session, *and* better UX — the user shapes the brief freely, then applies once, deliberately. Reverses the "both re-score on confirm" half of D35/D37: the save-vs-refine *distinction* stays (refine teaches, save doesn't), but even refine now queues rather than re-scores. Fetch Listings and Reapply are the only two token-spending scoring paths. See "LLM cost & token budget" (§7). |
+| D38 | Etsy wired as the second source now (pending approval); Re-pull fans out to all sources | Source (E1, was D3 Later) | MVP | eBay developer access never came through (and the API path stays blocked on approval); Etsy was the next option, so its API key was requested — also **pending review**. Rather than wait, the **Etsy adapter is wired now** (`sources/etsy.py`, keystring auth) and added to the multi-source pull, so the moment the key is approved Re-pull returns Etsy listings with **zero code change**. While pending it degrades to empty (NFR-3) and never breaks a pull. A **tri-state source dot** communicates status per marketplace — 🟢 live (API returning data) / 🟡 wired (key set, not live yet — pending approval / no live data) / 🔴 off (no key). **eBay is now 🟢 live**: the production keyset is approved (account-deletion exemption auto-granted) and a real Fetch pulls ~670 live Timex listings (CAD) through the same pipeline — the browser-capture interim (D30) and the bundled fixture are now the *fallback*, not the source. Etsy remains 🟡 wired pending its own approval. FX normalization for Etsy's non-CAD prices is still deferred (D19/D28). |
+
+---
+
+## Appendix B: Marketplace assessment
+
+The source decisions (build eBay now, add Etsy and others later, do not build Chrono24) come from this comparison.
+
+| Marketplace | API access | Vintage Timex volume | Location / shipping | MVP disposition |
+|---|---|---|---|---|
+| **eBay** | Browse API, app token (prod) | Very high | Global; API returns shipping for many items; CAD and USD | **Build now (spine)** |
+| **Etsy** | Open API v3, keystring (24 to 48h approval) | Medium to high | Global; per-listing shipping | **Later (second marketplace)** |
+| **Chrono24** | None; Cloudflare scrape | Very low (luxury) | Inventory mismatch is the problem | **Do not build** |
+| Kijiji / FB (Toronto) | None; scrape | Medium, local | Local pickup means $0 shipping | Future (high value) |
+| Reddit / Watchuseek | Reddit API / scrape | Low, high signal | Individual sellers | Future (signal) |
+| Yahoo Auctions JP (Buyee) | Proxy / scrape | High | Intl shipping usually breaks $50 cap | Future (taste-rich, budget-incompatible) |
+
+eBay is the only source that is at once high-volume, high-Timex-fit, and clean-API. Each future add unlocks a different axis: local attacks shipping cost, community attacks signal quality, Japan attacks taste depth.
+
+---
+
+## Appendix C: Original system flow (v1)
+
+The MVP shipped with the architecture below (the **current** design is the v2 diagram in [System Design](#7-system-design)). v1 is preserved here so the evolution is legible: one source (eBay), and a cheap keyword pre-rank that fed a small top pool to the LLM, with taste held as an editable keyword profile. We moved off this once we measured volume (low) and decided the LLM should judge everything against a natural-language brief — see the "Version 2 — what changed" list in §7 and decisions D33–D37.
+
+```mermaid
+flowchart TD
+    EB["1. eBay source adapter\n(ebay.ca, CAD)"] --> NORM["2. Normalize to Listing schema"]
+    NORM --> GATE{"3. Hard gate (cheap, deterministic)\nitem price <= 50?\nnot broken? (condition field + keywords)"}
+    GATE -- "fail" --> DROP["drop / collapse"]
+    GATE -- "pass (survivors)" --> PRE["4. Cheap pre-rank\nkeyword match vs. taste profile\nkeep the top pool"]
+
+    PROFILE["Taste profile\nkeywords from 3 examples (editable)"] --> PRE
+
+    PRE -- "top pool" --> JUDGE["5. LLM interesting judge (top pool only)\n0-100 score + reason"]
+    PRE -- "rest" --> ALL["view all (browsable)"]
+
+    JUDGE --> RANK["6. Order by score\nsurface top contenders"]
+    RANK --> UI["7. Present (FastAPI + HTML)\ntop contenders / view all / card / like"]
+    UI --> ACT["8. Act: click out to listing"]
+
+    UI -->|"like (from anywhere) updates keywords"| PROFILE
+```
+
+---
+
+*This README is a living document. The decision log (Appendix A) is updated as scope choices are made.*

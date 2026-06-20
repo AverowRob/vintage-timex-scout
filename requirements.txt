@@ -1,0 +1,14 @@
+# Source layer (eBay adapter) runs on the standard library only — nothing below
+# is needed to pull and normalize listings. These are for the later stages.
+
+# Web layer (E4 Present): FastAPI + server-rendered HTML.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+jinja2>=3.1
+
+# LLM judge (E3 Decide) and learning loop (E7).
+anthropic>=0.40
+
+# Dev / test.
+pytest>=8.0
+python-multipart>=0.0.9
