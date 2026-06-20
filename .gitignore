@@ -22,8 +22,10 @@ htmlcov/
 # OS
 .DS_Store
 
-# Runtime state (taste profile snapshot + pull cache)
-state/
+# Runtime state — kept local, EXCEPT the demo pull snapshot the deployed app loads
+# so it shows real enriched listings without live API calls (galleries, specifics, age).
+state/*
+!state/last_pull.json
 *.local.json
 
 # Editor / agent tooling config (machine-specific)
