@@ -405,7 +405,7 @@
       <div class="pmsg">
         <b>Taste brief updated — {{ pending|length }} change{{ 's' if pending|length != 1 }} queued.</b>
         Scores below don’t reflect {{ 'them' if pending|length != 1 else 'it' }} yet. Reapply to re-score all {{ result.counts.gated }} in one pass.
-        <span class="plist">{{ pending[-3:]|reverse|join(' · ') }}{% if pending|length > 3 %} · +{{ pending|length - 3 }} earlier{% endif %}</span>
+        <span class="plist">{{ (pending.values()|list)[-3:]|reverse|join(' · ') }}{% if pending|length > 3 %} · +{{ pending|length - 3 }} earlier{% endif %}</span>
       </div>
       <form action="/taste/apply" method="post" class="js-loading"
             data-loading="Re-scoring {{ result.counts.gated }} listings…">

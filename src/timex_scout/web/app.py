@@ -183,12 +183,16 @@ class AppState:
     last_pull_at: str = ""
     last_count: int = 0
     # Cost control (D39): taste edits (likes/dislikes/brief edits) only mutate the
-    # brief and mark it "dirty" — they do NOT re-score the ~387 gated listings. The
-    # user batches many refinements and re-scores once, on demand, via "Reapply
-    # taste". `pending` is the human-readable log of what's queued since last apply.
-    brief_dirty: bool = False
-    pending: list[str] = field(default_factory=list)
+    # brief and queue a re-score — they do NOT re-score the gated listings until the
+    # user clicks "Reapply taste". `pending` maps a change KEY (a listing id, or a
+    # constant for brief-text edits) to a human-readable note, so undoing a queued
+    # change CANCELS its entry instead of stacking another one.
+    pending: dict[str, str] = field(default_factory=dict)
     flash: str = ""                # one-shot success toast, shown then cleared on next render
+
+    @property
+    def brief_dirty(self) -> bool:
+        return bool(self.pending)
 
     @property
     def sources(self) -> list:
@@ -280,11 +284,17 @@ class AppState:
             detect_broken=detect_broken,
         )
 
-    def mark_dirty(self, note: str) -> None:
-        """Record a taste change WITHOUT re-scoring (D39). The brief is saved by the
-        caller; scores go stale until the user reapplies."""
-        self.brief_dirty = True
-        self.pending.append(note)
+    def mark_dirty(self, key: str, note: str) -> None:
+        """Queue a taste change WITHOUT re-scoring (D39), keyed (by listing id, or a
+        constant for brief-text edits) so a later undo can cancel it. The brief is
+        saved by the caller; scores stay stale until the user reapplies."""
+        self.pending[key] = note
+
+    def unmark(self, key: str) -> bool:
+        """Cancel a still-queued change (an undo before Reapply). True if one was
+        queued — so the caller knows whether this undo nets out a pending change or
+        is itself a fresh change to an already-applied edit."""
+        return self.pending.pop(key, None) is not None
 
     def apply_taste(self) -> None:
         """Re-score every listing against the (edited) brief — the explicit, batched
@@ -293,8 +303,7 @@ class AppState:
         self._clear_pending()
 
     def _clear_pending(self) -> None:
-        self.brief_dirty = False
-        self.pending = []
+        self.pending = {}
 
     def find(self, listing_id: str) -> Listing | None:
         return next((l for l in self.survivors if l.id == listing_id), None)
@@ -451,7 +460,7 @@ def like(listing_id: str, refine: int = Form(0), reason: str = Form(""),
             state.brief.save(BRIEF_PATH)
             state.profile.save(PROFILE_PATH)
             state.last_learned, state.last_action = [listing.title], "refined"
-            state.mark_dirty(f"Liked “{listing.title}”")
+            state.mark_dirty(listing_id, f"Liked “{listing.title}”")
         else:
             state.last_learned, state.last_action = [listing.title], "saved"
             state.flash = (f"Saved “{listing.title}” to your shortlist — your Scout is "
@@ -469,7 +478,7 @@ def add_reference(listing_id: str):
         state.brief.add_liked(listing.title)
         state.brief.save(BRIEF_PATH)
         state.last_learned, state.last_action = [listing.title], "refined"
-        state.mark_dirty(f"Referenced “{listing.title}”")
+        state.mark_dirty(listing_id, f"Referenced “{listing.title}”")
     return RedirectResponse("/taste", status_code=303)
 
 
@@ -487,7 +496,7 @@ def dislike(listing_id: str, reason: str = Form(""), mode: str = Form("contender
         state.brief.add_disliked(listing.title, reason)
         state.brief.save(BRIEF_PATH)
         state.last_learned, state.last_action = [listing.title], "passed"
-        state.mark_dirty(f"Passed on “{listing.title}”")
+        state.mark_dirty(listing_id, f"Passed on “{listing.title}”")
     return RedirectResponse(f"/{'' if mode == 'contenders' else mode}", status_code=303)
 
 
@@ -509,7 +518,10 @@ def unlike(listing_id: str, mode: str = Form("")):
     if listing and was_ref:  # only a reference change affects scoring
         state.brief.remove_liked(listing.title)
         state.brief.save(BRIEF_PATH)
-        state.mark_dirty(f"Removed reference “{listing.title}”")
+        # If the "like" was still queued (not yet reapplied), undo cancels it instead
+        # of stacking another change; only an applied reference's removal is new work.
+        if not state.unmark(listing_id):
+            state.mark_dirty(listing_id, f"Removed reference “{listing.title}”")
     if listing:
         state.flash = f"Removed “{listing.title}” from liked"
     return RedirectResponse(_back(mode), status_code=303)
@@ -523,7 +535,9 @@ def undislike(listing_id: str, mode: str = Form("")):
     if listing:
         state.brief.remove_disliked(listing.title)
         state.brief.save(BRIEF_PATH)
-        state.mark_dirty(f"Un-passed “{listing.title}”")
+        # Undo a still-queued downvote → cancel it; undo an applied one → new change.
+        if not state.unmark(listing_id):
+            state.mark_dirty(listing_id, f"Un-passed “{listing.title}”")
         state.flash = f"Un-passed “{listing.title}” — no longer downvoted"
     return RedirectResponse(_back(mode), status_code=303)
 
@@ -534,7 +548,7 @@ def taste_save(brief: str = Form(...)):
     text and queues a re-score (D39); takes effect on "Reapply taste"."""
     state.brief.text = brief
     state.brief.save(BRIEF_PATH)
-    state.mark_dirty("Edited the taste brief")
+    state.mark_dirty("__brief_text__", "Edited the taste brief")
     return RedirectResponse("/taste", status_code=303)
 
 
