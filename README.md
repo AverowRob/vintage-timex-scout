@@ -124,7 +124,7 @@ Mapped to the jobs in Section 2, the MVP serves Discover, Triage, and a path to 
 | ID | Requirement |
 |----|-------------|
 | NFR-1 | **Explainable**, at two altitudes. *Per item:* every surfaced piece carries a human-readable reason naming the specific taste signals that earned its score (e.g. "NOS, boxed, advertising dial"), never the price, since every listing is already gated ≤ $50. *Per system:* the Manage Scout tab carries a "How a score is decided" rule-brick: the 0–100 rubric bands (90–100 standout, 70–89 on-taste, 40–69 ordinary, 0–39 off-taste) and the signals the Scout weighs, so the user has a mental model for why any score landed where it did. |
-| NFR-2 | **Cost-aware.** Source-side filters and the deterministic gate cut volume before the LLM. The LLM then scores the gated set with a cheap Flash-tier model, *thinking disabled*, in a two-pass design (scores for all, reasons for the few); a full re-score is ~$0.02–0.03. Critically, **taste edits don't auto-re-score** (D39): likes/passes/edits are queued and applied in one batched **Reapply**, so a curation session costs one re-score, not one per click. A keyword pre-rank remains a cost guard if volume ever spikes past `MAX_LLM_SCORE`. See "LLM cost & token budget" in §7. |
+| NFR-2 | **Cost-aware.** Source-side filters and the deterministic gate cut volume before the LLM. The LLM then scores the gated set with a cheap Flash-tier model, *thinking disabled*, in a two-pass design (scores for all, reasons for the few); a full re-score is ~$0.02–0.03. Critically, **taste edits don't auto-re-score** (D39): likes/passes/edits are queued and applied in one batched **Reapply**, so a curation session costs one re-score, not one per click. See "LLM cost & token budget" in §7. |
 | NFR-3 | **Resilient.** A source failing degrades gracefully and the demo still renders; once there are multiple sources, one failing never breaks the others. |
 | NFR-4 | **Extensible.** Adding another marketplace later is a small, contained job: write one converter that turns its listings into the shared format the rest of the tool already uses, and nothing else has to change. |
 | NFR-5 | **Honest.** Uncertainty (low confidence, unknown condition) is shown, not hidden. |
@@ -214,18 +214,17 @@ Cost-awareness is a first-class design constraint here, not an afterthought: the
 | Action | Old (auto re-score) | New (D39, batched) |
 |---|---|---|
 | Like / pass / brief edit | ~$0.02 **each** (full re-score) | **$0** (file write; queued) |
-| Curate 40 listings in a session | ~40 × $0.02 ≈ **$0.80** | 1 Reapply ≈ **$0.02** |
+| A curation session (say 40 likes/passes) | ~40 × $0.02 ≈ **$0.80** | 1 Reapply ≈ **$0.02** |
 
-That is a **~40× reduction** for a typical curation session: the user can shape the brief freely and pay for exactly one re-score when they choose to apply it.
+That is a **~40× reduction** for a typical curation session, a stretch of teaching the Scout (likes, passes, brief edits) before you hit Reapply. The 40 is just an illustrative round number for one session's worth of feedback; the real point is that cost scales with how often you re-score, not how much you tinker. The user shapes the brief freely and pays for exactly one re-score when they apply it.
 
 **The levers, in order of impact:**
 1. **Thinking disabled** (`thinkingBudget = 0`). By default the model writes a private chain of reasoning *before* it answers (its "thinking"), which helps on hard multi-step problems but is wasted effort on a bounded scoring task: rate a short listing against a rubric, no reasoning chain required. Turning it off skips that step, and a full score dropped from ~90s to ~15s, with the token/compute spend cut proportionally and no meaningful loss in ranking quality. The single biggest lever: it's what made "score every listing" fast enough to be practical.
 2. **Batched reapply (D39).** N taste edits cost one re-score, not N.
 3. **Two-pass design.** The expensive full-set pass emits scores only (tiny output); reasons/breakdowns run on the small pool, not all ~390.
 4. **On-demand detail.** The granular breakdown is precomputed only for the ~8 contenders; everything else is explained lazily, only when its modal is opened.
-5. **`MAX_LLM_SCORE` volume guard.** If a pull ever returns thousands, the keyword pre-rank caps what reaches the LLM.
 
-**On the ~$5 spent to date:** that is almost entirely *development* iteration: many full pulls while building, the taste-extraction step, and (early on) runs *before* `thinkingBudget = 0` and batched reapply existed, which were several times more expensive each. In steady single-user operation, a session is a Fetch plus a Reapply or two, a few cents.
+**On the ~$15 spent to date:** that is almost entirely *development* iteration: many full pulls while building, the taste-extraction step, and (early on) runs *before* `thinkingBudget = 0` and batched reapply existed, which were several times more expensive each. In steady single-user operation, a session is a Fetch plus a Reapply or two, a few cents.
 
 ### The taste system, and why it changed (the heart of the product)
 Getting "interesting" right is the whole point of the tool, so the taste model is worth its own summary. It went through three deliberate moves, each logged in the decision log and BUILD_JOURNAL:
