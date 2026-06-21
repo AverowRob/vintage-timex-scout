@@ -30,3 +30,6 @@ state/*
 
 # Editor / agent tooling config (machine-specific)
 .claude/
+
+# Personal presentation deck — kept local, not part of the submission
+presentation.html
