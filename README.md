@@ -27,23 +27,23 @@ Appendices: [A. Decision Log](#appendix-a-decision-log-scope-rationale) · [B. M
 Vintage Timex is abundant and cheap, so the problem is not scarcity. It is volume, scatter, and repetitive judgment.
 
 * **Scatter.** Listings are spread across eBay, Etsy, and others. Each site gets checked by hand, separately, repeatedly.
-* **Volume and noise.** We expect many listings, and assume a large share are irrelevant, overpriced, or broken. The few worth attention are buried. Actual volume and quality mix are unverified until we pull live data, so this is a working assumption (see Design Considerations).
+* **Volume and noise.** We expect many listings, and assume a large share are irrelevant, overpriced, or broken. The few worth attention are buried.
 * **Judgment load.** Taste is implicit and hard to state, so triage is manual work repeated listing by listing.
 
 The collector has no single view of worth-buying listings across marketplaces. Keeping up means manual cross-site checking, sifting high-volume noise, and judging each listing against fuzzy taste, which wastes time and risks missing or misjudging a good piece.
 
 **What the product does.** It collapses multiple marketplaces into one explained shortlist of top contenders, filtered to budget, condition, and taste. The MVP proves the full pipeline (pull, filter, judge, surface, act) on a single marketplace, eBay; more sources follow (see Scope).
 
-**Why Timex only.** A deliberate scope choice: we are solving for one person, and that person collects Timex, so other brands are irrelevant. A multi-brand filter is tempting but off the table for now (revisit later).
+**Why Timex only.** We are solving for one person, and that person collects Timex, so other brands are irrelevant.
 
 ---
 
 ## 2. Jobs To Be Done
 
-These are the collector's real jobs, independent of any product: what the person has to do today, by hand.
+These are the collector's real jobs: what the person has to do today, by hand.
 
 1. **Discover.** Go to multiple marketplaces and search for new Timex listings.
-2. **Triage.** Apply judgment and taste to find the pieces that are relevant and interesting, sift past the irrelevant, overpriced, and broken, and do it fast.
+2. **Triage.** Apply judgment and taste to find the pieces that are relevant and interesting, sift past the irrelevant, overpriced, and broken.
 3. **Stay current.** Keep watching for new and relisted pieces over time, so good ones are not missed.
 4. **Act before it is gone.** Move quickly on the best opportunities before someone else does.
 
@@ -53,33 +53,19 @@ These are the collector's real jobs, independent of any product: what the person
 
 > **Where the value lives.** The marketplace integration, the hard gate, and adjustable filters are low-risk and largely deterministic, the easy part. The make-or-break is the quality of the interestingness ranking: for every 100 listings, can it pinpoint the one or two worth attention without losing the ones the user would have wanted? That quality is the whole point of the tool, and the bar the MVP must clear. Everything else is plumbing in service of it.
 
-The MVP is "working" if, given a pool of real listings that includes pieces resembling the three ground-truth watches from the brief, the tool:
+The MVP is "working" if the tool:
 
 1. Surfaces a small set of top contenders, ordered by the LLM's interestingness score, with the full gated set available to browse on demand. (How the score is produced is in System Design, boxes 4 to 6.)
 2. Applies the hard filters correctly and checkably: budget by item price (at or under $50), and excludes everything explicitly broken (a dead battery is fine).
 3. Orders the contenders sensibly against the ground truth: pieces resembling the three example watches land near the top, and clearly irrelevant or junk listings do not.
 4. Makes the reason for each pick clear to the user. The form this takes (a one-line reason, a badge, a pill, a highlight) is a UI choice, decided later.
 
-**Defining and evaluating "interesting."** The definition is explicit and inspectable: it is the keyword profile, built from the three example watches and updated by likes. Judging how well it surfaces is unavoidably subjective, so the MVP bar is a reasonable ranking, sanity-checked by eye against the ground-truth set, not a formal accuracy metric. The learning loop is built in the MVP, but proving it measurably improves quality over time is not a hard MVP success bar.
+**Defining and evaluating "interesting."** The definition is explicit and inspectable: it is the 'Taste Brief', built from the three example watches, the project brief and updated by likes. Judging how well it surfaces is unavoidably subjective, so the MVP bar is a reasonable ranking, sanity-checked by eye against the ground-truth set, not a formal accuracy metric. The learning loop is built in the MVP, but proving it measurably improves quality over time is not a hard MVP success bar.
 
 **Shipping and landed cost are deferred.** The brief's budget is "under $50 including shipping", but the MVP gates on item price only, from a single CAD source (ebay.ca). Computing a true landed cost (adding shipping to M6K1V8, currency-normalized) is a secondary feature for later: at this price point the gap is usually small, and it is not the core value of the tool (see Decision Log D28).
 
 **Ground truth (taste seed):** the three watches in the brief.
 `ebay.ca/itm/377073705816`, `ebay.ca/itm/117111976291`, `etsy.com/ca/listing/4469739360`.
-
-> **What the ground-truth watches actually are (fetched live, 2026-06-19).** We
-> pulled all three rather than guessing — the taste was broader than assumed:
-> (1) a **Timex Easy Reader Logo Quartz** (clean, legible, *quartz*), (2) a
-> **"Breyers" ice cream Timex La Cell** (advertising / novelty character dial),
-> (3) a **Timex Marlin with a green bullseye dial** (mechanical calendar, ~1992;
-> read for taste keywords only — Etsy stays out of MVP scope, D3). Plus the
-> brief's explicit "interesting" quote: *"Collabs (or collaborations), deadstock,
-> vintage models."* Together the taste is **distinctive / characterful dials**
-> (advertising, novelty, bullseye), **named vintage model lines** (Marlin), and
-> **collectibility** (collabs, deadstock) — across both quartz and mechanical,
-> and condition-tolerant. The keyword seed (`profile.py`) was recalibrated to
-> match. This matters: the success bar is ranking against these examples, so
-> seeding from a *guess* would have made the ranking subtly wrong (D32).
 
 ---
 
@@ -93,7 +79,7 @@ Mapped to the jobs in Section 2, the MVP serves Discover, Triage, and a path to 
 * On-demand pull.
 * Map listings into one shared format (the `Listing` schema; explained in System Design).
 * Hard gate: item price at or under $50; exclude explicitly broken (a deterministic check on the listing's stated condition field and keywords like "for parts").
-* Taste: an editable natural-language **taste brief** (markdown) — the brief's guidance + the three example watches + watches you like — that the LLM reads; editable by hand. *(Revised from a hidden keyword profile — D33; seamless because the brief slots into the same "taste in → score out" step, just as prose instead of weights.)*
+* Taste: an editable natural-language **taste brief** (markdown) — the brief's guidance + the three example watches + watches you like and dislike — that the LLM reads; editable by hand. 
 * Interestingness judgment: the LLM scores **every** gated listing 0–100 against the taste brief, with a reason for the contenders. *(Revised from scoring only a keyword-selected top pool — D33; once volume measured manageable and the thinking-off Flash judge was cheap/fast, scoring all was feasible and more accurate.)*
 * Learning loop: liking or passing on a watch (from anywhere) updates the taste brief; you **Reapply** to re-score the batch. *(Re-scoring is batched on demand, not live per click — D39, a cost decision; the loop still "improves with use," applied deliberately.)*
 * Top contenders surfaced, with option to view all.
@@ -103,11 +89,10 @@ Mapped to the jobs in Section 2, the MVP serves Discover, Triage, and a path to 
 * Additional marketplaces, Etsy included (Later, after higher-priority single-source work; prove one platform first). See Appendix B: Marketplace assessment.
 * Chrono24 (wrong inventory, no API; do not build).
 * Option to select other brands: the tool is built specifically for the nuance of Timex watches (see D23).
-* Heavier personalization: per-user profiles and a "For You" model from accumulated up/down signal are deferred. *(Negative signal — a downvote — was originally deferred but is now in the MVP: it adds a soft, reasoned, editable "Passed on" note to the taste brief. See D16/D35.)*
+* Heavier personalization: "For You" model from accumulated up/down signal are deferred. *(Negative signal — a downvote — was originally deferred but is now in the MVP: it adds a soft, reasoned, editable "Passed on" note to the taste brief. See D16/D35.)*
 * Notifications and change-detection.
 * Piece-history.
 * Shipping and landed cost in the budget filter (the MVP gates on item price); currency normalization for multi-currency sources.
-* Shipping-cost estimator.
 * Full persistence layer / datastore: lets the tool remember listings across pulls over time (recognize new vs. already-seen) and power awareness/alerts. The MVP keeps only the taste profile, in a lightweight store.
 * Automated scheduled pulls at a configurable frequency, for example daily or weekly (the MVP pulls on demand).
 
