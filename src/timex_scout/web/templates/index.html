@@ -565,7 +565,7 @@
             <span class="price num">${{ '%.2f'|format(l.price) }}</span>
             {% if l.interest_score is not none %}<span class="score num">{{ l.interest_score }}</span>{% endif %}
           </div>
-          {% if l.shipping_cost is not none %}<div class="ship">{% if l.shipping_cost > 0 %}+ ${{ '%.2f'|format(l.shipping_cost) }} ship{% else %}free shipping{% endif %} · <b>${{ '%.2f'|format(l.landed_cost) }} total</b></div>{% endif %}
+          <div class="ship">{% if l.shipping_cost is not none %}{% if l.shipping_cost > 0 %}+ ${{ '%.2f'|format(l.shipping_cost) }} ship{% else %}free shipping{% endif %} · <b>${{ '%.2f'|format(l.landed_cost) }} total</b>{% else %}+ shipping not listed{% endif %}</div>
           {% if l.reason %}<div class="reason">{{ l.reason }}</div>{% endif %}
           <div class="cond {{ 'broken' if l.working_status=='broken' }}">{{ l.raw_condition.label or 'condition unspecified' }}{% if l.listed_at %}<span class="age"> · {{ l.listed_at | age }}</span>{% endif %}</div>
           <div class="row">
