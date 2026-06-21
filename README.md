@@ -258,24 +258,14 @@ Epics run down the side (the pipeline spine first, then cross-cutting concerns),
 | Epic | Now (MVP) | Next | Later |
 |---|---|---|---|
 | **E1. Source and normalize** | eBay live; normalize to `Listing` | Etsy (second marketplace — wired, pending API approval) | local sources (Kijiji); cross-source dedup. Full source options in Appendix B. |
-| **E2. Filter / gate** | At or under $50; exclude explicitly broken | **Landed cost** (item + shipping to M6K1V8 ≤ $50) *[planned for Next — but the eBay API returns shipping cheaply (confirmed above), so it was easy and is in the MVP; D28]*; adjustable price cap; broaden-location toggle | FX to CAD for multi-currency |
-| **E3. Decide: interesting** | LLM scores every gated listing 0–100 against an editable natural-language **taste brief** (the brief's guidance + 3 examples + liked watches); reasons for the contenders. *(Revised from keyword pre-rank + pool — D33.)* | Confidence score; smarter brief authoring | Rarity/desirability scoring |
+| **E2. Filter / gate** | Total landed cost (item + shipping to M6K1V8) ≤ $50 — pulled in because the eBay API exposes shipping (D28); exclude explicitly broken | adjustable price cap; broaden-location toggle | FX to CAD for multi-currency |
+| **E3 + E7. Decide & learn (interestingness + taste)** | LLM scores every gated listing 0–100 against an editable natural-language **taste brief** (the brief's guidance + 3 examples + liked watches), with reasons for the contenders *(revised from keyword pre-rank + pool — D33)*. The brief **learns from use**: **like** (confirmed) a watch to add it as a reference, or **downvote** (with optional reason) to soft-penalize similar; both re-score; managed on the **Manage Scout** tab; persists across restarts | Confidence score; smarter brief authoring | Rarity/desirability scoring |
 | **E4. Present (UI)** | Top contenders plus view-all plus a detailed card (gallery, specifics, description); filters: price min/max, min score, sort. *(Condition filter deferred to Next — D-QA.)* | Condition filter controls; group by model/era | Saved views; collection dashboard |
 | **E5. Act** | Click-out to listing | none | none |
 | **E6. Recognize new vs. seen** | Snapshot only ("available now") | Persist seen-listings to recognize new vs. already-seen (avoid re-reviewing the same items) | Relisting detection. Price-history and price-drop tracking deprioritized (see D24) |
-| **E7. "Remember what I like" (taste agent)** | Editable natural-language **taste brief** seeded from the brief + 3 examples; **like** (confirmed) a watch to add it as a reference, or **downvote** (with optional reason) to soft-penalize similar; both re-score; managed on the **Manage Scout** tab; persists across restarts | Smarter brief authoring; confidence | "For You" ranking from accumulated signal; per-user profile |
 | **E8. "Hoping I don't miss something" (awareness)** | none (every run is fresh) | In-app "New since last pull" badge plus filter (needs E6) | Push: email/SMS digest of new candidates |
-| **E9. Shipping / landed cost** | Shipping cost fetched + shown per listing (to M6K1V8); unquoted shipping kept + flagged | **Gate on landed cost** (item + shipping ≤ $50) *[planned for Next — pulled into the MVP since the eBay API made it easy; D28]* | Carrier-rate estimator for fully-calculated cases (needs carrier API plus seller-location parsing) |
-| **E10. Condition assessment** | Two-layer not-broken: deterministic gate (structured condition + expanded keywords) **plus an LLM `broken` flag** in the scoring pass that catches the long tail of phrasings ("Runs 4 Repair", "run/stop") — broken is removed entirely. *(The LLM nuance, originally "Next", is now in the MVP — D-log / Entry 17.)* | Confidence on ambiguous "untested" | Vision: inspect photos for visible damage |
-
-Two epics are framed in the collector's own words: "Remember what I like" (E7), whose learning loop is already in the MVP, and "Hoping I don't miss something" (E8), which is future and waits on persistence.
-
-### UI shape (E4)
-Three views plus one card, with the taste profile visible and editable. Liking is part of the MVP and feeds the learning loop.
-* **Top contenders (default view):** the surfaced contenders up front, with a "view all" that reveals the full gated set, and a **Liked** view. Filters: price (min/max), min score, sort. *(Working-status filter deferred — Next.)* (Later: a personalized "For You" replaces the rule-ranked contenders.)
-* **Taste profile:** the three example watches and the keyword signals, shown so the user can see what taste the system is matching on. Editable by hand in the MVP, and updated automatically by likes.
-* **Liked / Interested:** likes (from anywhere, including "view all") populate this tab and update the taste profile.
-* **Card:** hero image, gallery, title, item price, stated condition, interest score plus reason, a like action, link.
+| **E9. Shipping / landed cost** | Gate on landed cost (item + shipping to M6K1V8 ≤ $50); shipping fetched + shown per listing; unquoted shipping kept + flagged | none | Carrier-rate estimator for fully-calculated cases (needs carrier API plus seller-location parsing) |
+| **E10. Condition assessment** | Two-layer not-broken: deterministic gate (structured condition + expanded keywords) **plus an LLM `broken` flag** in the scoring pass that catches the long tail of phrasings ("Runs 4 Repair", "run/stop") — broken is removed entirely. *(The LLM nuance, originally "Next", is now in the MVP — D-log / Entry 17.)* | none | Vision: inspect photos for visible damage |
 
 ---
 
