@@ -5,7 +5,7 @@ Plain-English guide to getting the tool live in a browser. (The build plan is in
 
 ## The two pieces
 
-- **GitHub** holds the *code*. It does not run anything — it's storage + version history.
+- **GitHub** holds the *code*. It does not run anything; it's storage + version history.
 - A **host** (a small cloud service) *runs* the code and gives you a **public link** you can
   open from any browser, on any laptop.
 
@@ -19,9 +19,9 @@ and the deploy config (`render.yaml`).
 
 **Never in (kept secret / local):** your API keys (`.env`), the Python virtual environment
 (`.venv/`), and the runtime cache (`state/`). These are excluded by `.gitignore`. Your keys live
-only on your machine and in the host's settings — never in GitHub.
+only on your machine and in the host's settings, never in GitHub.
 
-## Option A — a public link (recommended for demoing)
+## Option A: a public link (recommended for demoing)
 
 Deploy to **[Render](https://render.com)** (free tier):
 
@@ -29,20 +29,20 @@ Deploy to **[Render](https://render.com)** (free tier):
 2. On Render: **New → Blueprint → connect this repo.** Render reads `render.yaml` and configures
    the build/start commands automatically.
 3. In the Render dashboard, add your secret environment variable:
-   - `GEMINI_API_KEY` — your Google Gemini key (this powers the AI scoring).
+   - `GEMINI_API_KEY`: your Google Gemini key (this powers the AI scoring).
    - *(Optional)* for **live eBay data** instead of the bundled sample, also add
      `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, and `EBAY_ENV=production`.
 4. Deploy. You'll get a link like `https://timex-scout-xxxx.onrender.com`. Open it anywhere.
 
 By default (Gemini key only, no eBay keys) the app runs on the **bundled sample of ~500 real
-captured listings** with full AI scoring — so it always works and never touches your eBay quota.
+captured listings** with full AI scoring, so it always works and never touches your eBay quota.
 Add the eBay keys when you want it pulling live inventory.
 
 > Free-tier note: the app sleeps after ~15 min idle; the first visit then takes ~30–40s to wake.
 > Open the link a minute before a demo to warm it up, or use Render's paid instance ($7/mo) for an
 > always-on link.
 
-## Option B — run it locally on your laptop
+## Option B: run it locally on your laptop
 
 If you'd rather run it on your own machine:
 
