@@ -70,6 +70,8 @@ the key changes and the reasoning behind them. The full decision log is in READM
 
 **End-to-end QA.** A full pass confirmed every functional and non-functional requirement is met — the gate and the AI scoring actually exceed the original plan. The build plan was reconciled to what shipped, the most consequential decisions were flagged, and the most verbose user-facing copy was trimmed.
 
+**Budget correction — gate on *total* cost, not item price.** The brief's budget is "under $50 *including shipping*", and we'd been gating on item price (shipping was deferred as a secondary signal — wrong call). Fixed: the gate now uses **landed cost = item + shipping to M6K1V8 ≤ $50**. Shipping comes free from the Browse API's `shippingOptions` (requested for M6K1V8 via the end-user-context header — no extra calls); free shipping is $0; an item with no quote is kept on item price and flagged "shipping not listed" (favor recall). The cards and detail view now show "+ $X ship · $Y total". Reverses D28; it was a core requirement, not a nice-to-have.
+
 ---
 
 ## Bug ledger

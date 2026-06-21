@@ -72,8 +72,10 @@ def is_broken(listing: Listing) -> tuple[bool, str | None]:
 
 
 def price_ok(listing: Listing, cap: float = PRICE_CAP_CAD) -> bool:
-    """Item price present and at or under the cap (FR-2: item price only)."""
-    return listing.price is not None and listing.price <= cap
+    """TOTAL landed cost (item price + shipping to the ship-to location) at or under
+    the cap — the brief's budget basis (FR-2). Shipping unknown counts as 0."""
+    landed = listing.landed_cost
+    return landed is not None and landed <= cap
 
 
 def is_timex(listing: Listing) -> bool:
@@ -98,8 +100,12 @@ def evaluate(listing: Listing, cap: float = PRICE_CAP_CAD) -> GateResult:
     if not timex:
         reason = "not a Timex (brand filter)"
     elif not ok_price:
-        price_str = f"${listing.price:.2f}" if listing.price is not None else "no price"
-        reason = f"over budget ({price_str} > ${cap:.0f})"
+        landed = listing.landed_cost
+        if landed is None:
+            reason = f"over budget (no price > ${cap:.0f})"
+        else:
+            ship = f" incl. ${listing.shipping_cost:.2f} ship" if listing.shipping_known else ""
+            reason = f"over budget (${landed:.2f} total{ship} > ${cap:.0f})"
     elif broken:
         reason = f"broken — {signal}"
     else:

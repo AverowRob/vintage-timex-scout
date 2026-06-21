@@ -18,6 +18,36 @@ def _listing(title="Timex Marlin 1972", price=30.0, label="Pre-Owned", cond_id="
     )
 
 
+def test_landed_cost_over_cap_is_dropped():
+    """Budget is TOTAL: item + shipping > $50 fails even when the item alone is under."""
+    l = _listing(price=45.0)
+    l.shipping_cost = 10.0                         # $55 landed
+    r = evaluate(l)
+    assert r.passed is False and r.price_ok is False
+    assert "total" in r.reason and "55.00" in r.reason
+
+
+def test_landed_cost_under_cap_passes():
+    l = _listing(price=40.0)
+    l.shipping_cost = 8.0                           # $48 landed
+    assert evaluate(l).passed is True
+    assert l.landed_cost == 48.0
+
+
+def test_free_shipping_at_cap_passes():
+    l = _listing(price=50.0)
+    l.shipping_cost = 0.0                           # exactly $50, free shipping
+    assert evaluate(l).passed is True
+
+
+def test_unknown_shipping_gates_on_item_price():
+    """No shipping quote → treat as 0 (optimistic), flag via shipping_known=False."""
+    l = _listing(price=45.0)                        # shipping_cost None
+    assert l.shipping_known is False
+    assert l.landed_cost == 45.0
+    assert evaluate(l).passed is True
+
+
 def test_non_timex_is_dropped():
     from timex_scout.gate import is_timex
     seiko = _listing(title="Seiko 4N01 Mickey Mouse Disney Womens Watch Gold")

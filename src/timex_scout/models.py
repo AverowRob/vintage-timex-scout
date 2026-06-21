@@ -70,9 +70,24 @@ class Listing:
     score_factors: list[dict] = field(default_factory=list)
     score_narrative: str | None = None
 
-    # --- Deferred with the shipping feature (D28); declared for forward ref ---
+    # Shipping to the ship-to location (FR-2): the budget is TOTAL landed cost
+    # (item + shipping ≤ cap), not item price alone. `shipping_cost` is None when the
+    # marketplace returns no shipping figure (e.g. local-pickup / calculated-no-quote).
     shipping_cost: float | None = None
-    landed_cost_cad: float | None = None
+    landed_cost_cad: float | None = None  # reserved (FX-normalized landed cost, D19)
+
+    @property
+    def landed_cost(self) -> float | None:
+        """Item price + shipping = the brief's budget basis. Unknown shipping counts
+        as 0 (optimistic) and is flagged in the UI, so an item never disappears just
+        because the seller didn't quote shipping."""
+        if self.price is None:
+            return None
+        return self.price + (self.shipping_cost or 0.0)
+
+    @property
+    def shipping_known(self) -> bool:
+        return self.shipping_cost is not None
 
     def search_text(self) -> str:
         """Title + condition text, lowercased — what the pre-rank matches on."""

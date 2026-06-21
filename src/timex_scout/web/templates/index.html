@@ -143,6 +143,8 @@
            padding:3px 9px;border-radius:99px;display:inline-flex;align-items:center;gap:4px;}
     .score::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--score);}
     .reason{font-size:12.5px;color:var(--ink-2);line-height:1.4;}
+    .ship{font-size:11.5px;color:var(--muted);}
+    .ship b{color:var(--ink);font-weight:600;}
     .cond{font-size:11.5px;color:var(--muted);}
     .cond.broken{color:var(--ink);font-weight:600;}
     .row{display:flex;gap:8px;margin-top:auto;padding-top:4px;}
@@ -269,6 +271,8 @@
     .det-info .d-title{font-size:16px;font-weight:700;line-height:1.35;letter-spacing:-0.01em;}
     .det-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
     .det-meta .price{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;}
+    .det-meta .price-ship{font-size:12px;font-weight:400;color:var(--muted);}
+    .det-meta .price-ship b{color:var(--ink);font-weight:600;}
     .det-reason{font-size:13px;color:var(--ink-2);line-height:1.5;background:var(--surface-2);
         border-radius:var(--radius-sm);padding:11px 13px;}
     .det-reason .rl{display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;
@@ -368,7 +372,7 @@
         </div>
         <div class="n num">{{ result.counts.fetched }}</div>
         <div class="t">Fetched</div>
-        <div class="c">“vintage timex” · item price ≤ ${{ price_cap }}</div>
+        <div class="c">“vintage timex” · ≤ ${{ price_cap }} total (incl. shipping to M6K1V8)</div>
         <div class="fetch-row">
           <form action="/refresh" method="post" class="js-loading" data-loading="Fetching &amp; scoring listings…"><button class="btn btn-sm" type="submit">↻ Fetch</button></form>
           {% if last_pull_at %}<span class="updated">Updated <b>{{ last_pull_at }}</b></span>{% endif %}
@@ -561,6 +565,7 @@
             <span class="price num">${{ '%.2f'|format(l.price) }}</span>
             {% if l.interest_score is not none %}<span class="score num">{{ l.interest_score }}</span>{% endif %}
           </div>
+          {% if l.shipping_cost is not none %}<div class="ship">{% if l.shipping_cost > 0 %}+ ${{ '%.2f'|format(l.shipping_cost) }} ship{% else %}free shipping{% endif %} · <b>${{ '%.2f'|format(l.landed_cost) }} total</b></div>{% endif %}
           {% if l.reason %}<div class="reason">{{ l.reason }}</div>{% endif %}
           <div class="cond {{ 'broken' if l.working_status=='broken' }}">{{ l.raw_condition.label or 'condition unspecified' }}{% if l.listed_at %}<span class="age"> · {{ l.listed_at | age }}</span>{% endif %}</div>
           <div class="row">
@@ -691,7 +696,9 @@
       narrative: {{ (l.score_narrative or '')|tojson }},
       specifics: {{ (l.item_specifics or {})|tojson }},
       description: {{ (l.description or '')|tojson }},
-      age: {{ (l.listed_at | age)|tojson }}
+      age: {{ (l.listed_at | age)|tojson }},
+      shipping: {{ (l.shipping_cost if l.shipping_cost is not none else none)|tojson }},
+      total: {{ ('%.2f'|format(l.landed_cost) if l.landed_cost is not none else none)|tojson }}
     }{{ "," if not loop.last }}
     {% endfor %}];
     const PAGE_MODE = {{ mode|tojson }};
@@ -726,7 +733,11 @@
       const l = LISTINGS[detIdx]; if (!l) return;
       renderGallery(l);
       document.getElementById('detTitle').textContent = l.title;
-      document.getElementById('detPrice').textContent = '$' + l.price;
+      var priceHtml = '$' + l.price;
+      if (l.shipping !== null) priceHtml += ' <span class="price-ship">'
+        + (l.shipping > 0 ? '+ $' + l.shipping.toFixed(2) + ' ship · ' : 'free shipping · ')
+        + '<b>$' + l.total + ' total</b></span>';
+      document.getElementById('detPrice').innerHTML = priceHtml;
       document.getElementById('detScoreWrap').innerHTML =
         (l.score !== null) ? '<span class="score num">' + l.score + '</span>' : '';
       renderExplanation(l);

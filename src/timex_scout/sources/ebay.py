@@ -28,7 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from ..config import EbayConfig, load_ebay_config
+from ..config import SHIP_TO_POSTAL, EbayConfig, load_ebay_config
 from ..models import Listing, RawCondition
 from .base import Source
 from .ebay_search import DEFAULT_QUERIES, WRISTWATCH_CATEGORY, browse_filter
@@ -204,6 +204,7 @@ class EbaySource(Source):
             headers={
                 "Authorization": f"Bearer {token}",
                 "X-EBAY-C-MARKETPLACE-ID": self.config.marketplace_id,
+                "X-EBAY-C-ENDUSERCTX": _ship_ctx(self.config.marketplace_id),
             },
         )
         try:
@@ -247,6 +248,7 @@ class EbaySource(Source):
             headers={
                 "Authorization": f"Bearer {token}",
                 "X-EBAY-C-MARKETPLACE-ID": self.config.marketplace_id,
+                "X-EBAY-C-ENDUSERCTX": _ship_ctx(self.config.marketplace_id),
                 "Content-Type": "application/json",
             },
         )
@@ -280,6 +282,7 @@ class EbaySource(Source):
             seller=(item.get("seller") or {}).get("username"),
             listing_end=item.get("itemEndDate"),
             listed_at=item.get("itemCreationDate"),     # in the summary — no extra call
+            shipping_cost=_shipping_cost(item),         # to the ship-to location (FR-2)
             description=_clean_description(item.get("description")),
             item_specifics=_collect_specifics(item.get("localizedAspects")),
             raw=item,
@@ -315,6 +318,26 @@ def _to_float(value: Any) -> float | None:
 
 def _str_or_none(value: Any) -> str | None:
     return str(value) if value is not None else None
+
+
+def _ship_ctx(marketplace_id: str) -> str:
+    """X-EBAY-C-ENDUSERCTX value so eBay quotes shipping to the ship-to location
+    (the basis for the brief's total-cost budget). EBAY_CA → country=CA."""
+    country = marketplace_id.replace("EBAY_", "") or "CA"
+    return f"contextualLocation=country={country},zip={SHIP_TO_POSTAL}"
+
+
+def _shipping_cost(item: dict[str, Any]) -> float | None:
+    """The cheapest shipping option's cost to the ship-to location, or None if eBay
+    returned no shipping figure (local pickup / no calculated quote). Free shipping
+    is 0.0, not None."""
+    costs: list[float] = []
+    for opt in item.get("shippingOptions") or []:
+        value = (opt.get("shippingCost") or {}).get("value")
+        cost = _to_float(value)
+        if cost is not None:
+            costs.append(cost)
+    return min(costs) if costs else None
 
 
 def _collect_images(item: dict[str, Any]) -> list[str]:
