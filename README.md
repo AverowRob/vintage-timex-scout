@@ -227,7 +227,7 @@ Cost-awareness is a first-class design constraint here, not an afterthought — 
 That is a **~40× reduction** for a typical curation session — the user can shape the brief freely and pay for exactly one re-score when they choose to apply it.
 
 **The levers, in order of impact:**
-1. **Thinking disabled** (`thinkingBudget = 0`) — cut a full score from ~90s to ~15s and the proportional token/compute spend. The single biggest lever.
+1. **Thinking disabled** (`thinkingBudget = 0`) — by default the model writes a private chain of reasoning *before* it answers (its "thinking"), which helps on hard multi-step problems but is wasted effort on a bounded scoring task: rate a short listing against a rubric, no reasoning chain required. Turning it off skips that step — a full score dropped from ~90s to ~15s, with the token/compute spend cut proportionally and no meaningful loss in ranking quality. The single biggest lever: it's what made "score every listing" fast enough to be practical.
 2. **Batched reapply (D39)** — N taste edits cost one re-score, not N.
 3. **Two-pass design** — the expensive full-set pass emits scores only (tiny output); reasons/breakdowns run on the small pool, not all ~390.
 4. **On-demand detail** — the granular breakdown is precomputed only for the ~8 contenders; everything else is explained lazily, only when its modal is opened.
