@@ -14,7 +14,7 @@ the key changes and the reasoning behind them. The full decision log is in READM
 
 ---
 
-## Phase 1 — Real data and a working pipeline
+## Phase 1: Real data and a working pipeline
 
 **Scaffold + eBay adapter.** Built the `src/` layout, the shared `Listing` schema, and the eBay Browse adapter (OAuth app-token, paginated search, normalize). The source layer is standard-library only, so the make-or-break ranking work was never blocked on dependency installs.
 
@@ -28,7 +28,7 @@ the key changes and the reasoning behind them. The full decision log is in READM
 
 **Ground-truth correction.** The taste seed was guessing at a "mechanical Marlin collector." Fetching the brief's three actual example watches revealed a quirkier, character-dial-leaning taste where quartz is fine, and the seed was recalibrated; guessing the ground truth would have made the core ranking subtly wrong.
 
-## Phase 2 — The core pivot: an AI judging against a taste brief
+## Phase 2: The core pivot, an AI judging against a taste brief
 
 **Keywords → the AI scores everything.** The original design used keyword matching to pre-rank and only sent a small pool to the AI. Once volume measured low and the judge was fast and cheap, the keyword proxy was both unnecessary and less accurate (keywords miss meaning: an unlisted collab, "deadstock" phrased ten ways). The AI now scores every gated listing; keywords survive only as a no-AI fallback.
 
@@ -36,7 +36,7 @@ the key changes and the reasoning behind them. The full decision log is in READM
 
 **Performance: thinking off.** The model "thinks" by default, which is wasted on bulk scoring and slow enough to time out. Disabling it cut a full score from ~90s to ~15s, the single biggest speed lever, and what made scoring everything feasible. (Setting temperature to zero also stabilized run-to-run counts.)
 
-## Phase 3 — Making the judge trustworthy and explainable
+## Phase 3: Making the judge trustworthy and explainable
 
 **Two-layer not-broken.** Broken watches were slipping into the contenders ("Runs 4 Repair", "run/stop"), phrasings the deterministic keyword gate missed. Fixed with two layers: an expanded deterministic gate, plus an AI "broken" flag in the scoring pass that catches the long tail. A broken watch is now removed entirely.
 
@@ -48,13 +48,13 @@ the key changes and the reasoning behind them. The full decision log is in READM
 
 **Passed-on traits override taste.** A downvote now strongly penalizes the matching trait into the off-taste band, even one that's normally on-taste: pass on Mickey Mouse and every Mickey watch drops, while other character dials stay high. One gotcha caught in testing: a concrete example placed *inside* the AI's rubric got read as a real rule, so examples are now kept out of the instruction.
 
-## Phase 4 — The learning loop and controlling cost
+## Phase 4: The learning loop and controlling cost
 
 **Two-directional, reasoned learning.** Liking a watch adds it as a positive reference (with an optional note on *what* you like); downvoting adds a soft, editable "passed on" note (with an optional *why*). Both are managed on a dedicated Manage Scout tab, and neither ever hides a listing: a low score sits at the bottom of "view all", not gone.
 
 **Editing taste is free; re-scoring is batched.** Re-scoring all ~500 listings on every like or dislike was the dominant cost. Now edits just update the brief and queue; you click **Reapply** once to re-score the whole batch, turning a curation session of dozens of changes into a single re-score (~40× cheaper). A banner shows what's pending, and a loading overlay plus a success toast give clear feedback that something happened and finished.
 
-## Phase 5 — Going live on the real eBay API
+## Phase 5: Going live on the real eBay API
 
 **eBay production approved → live.** The required account-deletion exemption was auto-granted, the production keyset went in, and a Fetch now pulls ~670 real Timex listings through the exact same pipeline, zero code change, just as the adapter was designed for. The browser-capture fixture is now the fallback, not the source.
 
@@ -64,7 +64,7 @@ the key changes and the reasoning behind them. The full decision log is in READM
 
 **Pull cache (quota guard).** Restarts and code reloads reuse the last fetch instead of re-hitting the API. Combined with batched re-scoring, this means iterating on scores never spends API quota; only the explicit "Fetch Listings" button pulls from eBay.
 
-## Phase 6 — Polish, QA, and ship
+## Phase 6: Polish, QA, and ship
 
 **UI refinements.** A "Liked" funnel view; sort that applies on change and persists across pages; a Max-price filter; card heart/✕ icons you can click to undo; a title that reflects the current view; one-shot toasts instead of sticky banners; and source dots that show true live / wired / off status (including after a cache-load restart). Etsy is wired as a second source, pending its own approval.
 
